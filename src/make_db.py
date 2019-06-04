@@ -10,10 +10,9 @@ from .db02.make_db import make_db as make_db2
 
 # make_db():
 def make_db(dst_dir, ksj_files):
+    t0 = time()
     db01_dir = os.path.join(dst_dir, 'db01')
     db02_dir = os.path.join(dst_dir, 'db02')
-
-    t0 = time()
 
     # make_db1
     print('create database (lv.1)...')

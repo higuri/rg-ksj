@@ -16,6 +16,9 @@ dist_dir = os.path.join('.', 'dist')
 
 # build():
 def build(ksj_files):
+    print('cleaning...')
+    clean()
+    print('ready.')
     # make build
     make_db(build_dir, ksj_files)
     # make dist

@@ -105,18 +105,3 @@ class Polygon:
                 if p.x < (v0.x + (vt * (v1.x - v0.x))):
                     nIntersects += 1
         return not (nIntersects % 2 == 0)
-
-## AdminArea
-class AdminArea:
-    # AdminArea()
-    def __init__(self, id, name, bounds):
-        self.id = id    # AreaCode
-        self.name = name
-        self.bounds = bounds
-        return
-
-    # pref_code:
-    @property
-    def pref_code(self):
-        return self.id[:2]
-
