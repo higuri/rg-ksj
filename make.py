@@ -21,15 +21,6 @@ def build(ksj_files):
     print('ready.')
     # make build
     make_db(build_dir, ksj_files)
-    # make dist
-    # make distributables
-    # *) distributables == db02
-    print('make distributables to %s...' % dist_dir)
-    if os.path.isdir(dist_dir):
-        shutil.rmtree(dist_dir)
-    shutil.copytree(
-        os.path.join(build_dir, 'db02'),
-        dist_dir)
     return
 
 # clean():
