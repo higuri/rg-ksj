@@ -11,7 +11,7 @@ def get_area(lat, lng, db_root='build'):
     path = os.path.join(db_root, 'geohash')
     if not os.path.isdir(path):
         raise ValueError()
-    print(encode(lat, lng, 7))
+    #print(encode(lat, lng, 7))
     for c in encode(lat, lng, 7):
         path = os.path.join(path, c)
         if os.path.isdir(path):
