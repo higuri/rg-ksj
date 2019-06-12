@@ -1,23 +1,13 @@
 #!/usr/bin/env python3
-#
-# db01/make_db.py
+# make_db.py
 # - Make DB for reverse geocodeing from KSJ (Kokudo Suuchi Jouhou) files.
 # [Input]
 # - XML files of Kokudo Suuchi Jouhou - Administrative Boundaries
 #   Data Source:
 #   http://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-v2_3.html
 # [Output]
-# - kml/ : KML files which define polygons of administrative boundaries.
-#   [Syntax]
-#   kml/${pref_code}/${area_code}.kml
-# - kml-index/ : index files for 'kml/',
-#                for improving search efficiency.
-#   [Syntax]
-#   kml-index/${lat0}/${lat1}/${lng0}/${lng1}.txt
-#   *) This file contains KML file paths (polygons) which may contain
-#      the coordinate (lat=${lat0}.${lat1}xxx, lng=${lng0}.${lng1}xxx).
-#      e.g. kml-index/35/1/139/1.txt:
-#           The index file for the coordinate (lat=35.1xxx, lng=139.1xxx)
+# - geohash/
+#   TODO
 #      
 
 import os
@@ -223,6 +213,7 @@ def make_kml_files(ksj_file, dst_dir):
     # ksj_file -> {area_code: [curve_file(.kml)...]}
     #   write out ksj:Curve objects (boundary fragments) to KML files.
     areacode2curvefiles = make_curve_files(ksj_file, tmp_dir)
+    kml_files = []
     for (area_code, curve_files) in areacode2curvefiles.items():
         polygons = []
         # curve_file -> [polygon...]
@@ -235,27 +226,12 @@ def make_kml_files(ksj_file, dst_dir):
         pref_dir = os.path.join(dst_dir, pref_code)
         if not os.path.isdir(pref_dir):
             os.makedirs(pref_dir)
-        kml_path = os.path.join(pref_dir, area_code + '.kml')
-        print('writing: %s...' % kml_path)
-        make_kml_file(polygons, area_code, kml_path)
+        kml_file = os.path.join(pref_dir, area_code + '.kml')
+        make_kml_file(polygons, area_code, kml_file)
+        kml_files.append(kml_file)
+        print('Finished: writing %s' % kml_file)
     shutil.rmtree(tmp_dir)
-    return
-
-# make_db01():
-def make_db01(ksj_files, n_chars, dst_dir='.'):
-    # db01
-    kml_dir = os.path.join(dst_dir, 'kml')
-    for ksj_file in ksj_files:
-        # parse
-        print('reading: %s...' % ksj_file)
-        make_kml_files(ksj_file, kml_dir)
-    # db02
-    geohash_dir = os.path.join(dst_dir, 'geohash')
-    make_db02(kml_dir, n_chars, geohash_dir)
-    return
-
-
-#####  db02
+    return kml_files
 
 # write_db_entry()
 def write_db_entry(geohash, area_code, geohash_dir):
@@ -264,13 +240,12 @@ def write_db_entry(geohash, area_code, geohash_dir):
     fpath = os.path.join(dpath, geohash[-1] + '_' + area_code)
     if not os.path.isdir(dpath):
         os.makedirs(dpath)
-    #print("writing: %s..." % fpath)
     open(fpath, 'w').close()
     return
 
 # make_db_entries():
 def make_db_entries(args): 
-    (kml_file, n_chars, geohash_dir) = args
+    (i_kmls, n_kmls, kml_file, n_chars, geohash_dir) = args
     area_code = get_area_code(kml_file)
     #
     def make_polygon(lat_lng_range):
@@ -304,7 +279,7 @@ def make_db_entries(args):
                 pass    # nop
         return
     #
-    print('parsing: %s...' % kml_file)
+    t0 = time()
     for (polygon, lat_lng_range) in make_polygons(kml_file):
         geohash = get_longest_geohash(lat_lng_range, n_chars)
         if len(geohash) < n_chars:
@@ -312,17 +287,8 @@ def make_db_entries(args):
         else:
             # Okinotori case?
             write_db_entry(geohash, area_code, geohash_dir)
-    return
-
-# make_db02():
-def make_db02(kml_dir, n_chars, dst_dir):
-    kml_files = []
-    for (root, dirs, files) in os.walk(kml_dir):
-        kml_files += [os.path.join(root, f) for f in files]
-    print('start creating database [cpu_count=%d].' % mp.cpu_count())
-    args = [(kml_file, n_chars, dst_dir) for kml_file in kml_files]
-    pool = mp.Pool()
-    pool.map(make_db_entries, args)
+    print('Finished: [%d/%d] parsing %s (%.2f sec)' % (
+        i_kmls, n_kmls, kml_file, time() - t0))
     return
 
 ####
@@ -330,9 +296,24 @@ def make_db02(kml_dir, n_chars, dst_dir):
 # make_db():
 def make_db(dst_dir, ksj_files):
     t0 = time()
-
+    # ${dst_dir}/kml
+    kml_dir = os.path.join(dst_dir, 'kml')
+    kml_files = []
+    for ksj_file in ksj_files:
+        # parse
+        print('reading: %s...' % ksj_file)
+        kml_files += make_kml_files(ksj_file, kml_dir)
+    # ${dst_dir}/geohash
+    print('start creating database [cpu_count=%d].' % mp.cpu_count())
     n_chars = 7
-    make_db01(ksj_files, n_chars, dst_dir)
+    geohash_dir = os.path.join(dst_dir, 'geohash')
+    args = [
+        (i_kmls, len(kml_files), kml_file, n_chars, geohash_dir)
+        for (i_kmls, kml_file) in enumerate(kml_files)
+    ]
+    pool = mp.Pool()
+    pool.map(make_db_entries, args)
+    # ${dst_dir}/*.py
     dir0 = os.path.dirname(os.path.realpath(__file__))
     shutil.copyfile(
         os.path.join(dir0, 'query_db.py'),
@@ -340,8 +321,7 @@ def make_db(dst_dir, ksj_files):
     shutil.copyfile(
         os.path.join(dir0, 'geohash.py'),
         os.path.join(dst_dir, 'geohash.py'))
-
-    print('Finished: %r' % (time() - t0))
+    print('Finished: %.2f sec' % (time() - t0))
     return
 
 # main():

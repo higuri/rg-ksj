@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# query_db02.py
+# query_db.py
 
 import glob
 import os
