@@ -5,7 +5,6 @@
 # - clean
 # - test
 
-import tarfile
 import getopt
 import glob
 import os
@@ -18,33 +17,30 @@ dist_dir = os.path.join('.', 'dist')
 src_dir = os.path.join('.', 'src')
 
 # build():
-def build(ksj_files, n_geohash):
-    def compress(src_dir, root_name, dst_file):
-        with tarfile.open(dst_file, 'w:bz2') as tarbz2:
-            for (root, ds, fs) in os.walk(src_dir):
-                for f in fs:
-                    fpath = os.path.join(root, f)
-                    name = fpath[fpath.index(root_name):]
-                    tarbz2.add(fpath, name)
-        return
+def build(ksj_files, db_type, n_geohash):
     # clean
-    print('cleaning...')
+    print('Cleaning...')
     clean()
     # build
-    print('ready.')
-    make_db(ksj_files, build_dir, n_geohash)
+    print('Ready.')
+    make_db(ksj_files, build_dir, db_type, n_geohash)
     # dist
+    print('Making distributables...')
     os.makedirs(dist_dir)
-    compress(
-        os.path.join(build_dir, 'geohash'),
-        'geohash',
-        os.path.join(dist_dir, 'geohash.tar.bz2'))
     shutil.copyfile(
         os.path.join(src_dir, 'query_db.py'),
         os.path.join(dist_dir, 'query_db.py'))
     shutil.copyfile(
         os.path.join(src_dir, 'geohash.py'),
         os.path.join(dist_dir, 'geohash.py'))
+    if db_type == 'json':
+        shutil.copyfile(
+            os.path.join(build_dir, 'area_code.json'),
+            os.path.join(dist_dir, 'area_code.json'))
+    elif db_type == 'fs':
+        shutil.copytree(
+            os.path.join(build_dir, 'area_code'),
+            os.path.join(dist_dir, 'area_code'))
     return
 
 # clean():
@@ -67,7 +63,7 @@ def clean():
 def main(argv):
     def help():
         print('python3 main.py')
-        print(' build [-n $(n_geohash)] ksj_files')
+        print(' build [-t {json, fs}] [-n $(n_geohash)] ksj_files')
         print(' test lat lng')
         print(' clean')
         return
@@ -75,12 +71,15 @@ def main(argv):
         help()
         return -1
     cmd = argv[0]
+    db_type = 'json'
     n_geohash = 7
     try:
-        (options, args) = getopt.getopt(argv[1:], 'n:')
+        (options, args) = getopt.getopt(argv[1:], 'n:t:')
         for (opt, val) in options:
             if opt == '-n':
                 n_geohash = int(val)
+            elif opt == '-t':
+                db_type = val
     except getopt.error as err:
         print(err)
         help()
@@ -89,7 +88,7 @@ def main(argv):
         if len(args) < 1:
             help()
             return -1
-        build(args, n_geohash)
+        build(args, db_type, n_geohash)
     elif cmd == 'test':
         if len(args) < 2:
             help()

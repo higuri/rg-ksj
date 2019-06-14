@@ -6,13 +6,15 @@
 #   Data Source:
 #   http://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-v2_3.html
 # [Output]
-# - geohash/
+# - area_code/
+# - area_code.json
 #   TODO
 #      
 
+import json
 import os
-import sys
 import shutil
+import sys
 from time import time
 import multiprocessing as mp
 import re
@@ -233,20 +235,43 @@ def make_kml_files(ksj_file, dst_dir):
     shutil.rmtree(tmp_dir)
     return kml_files
 
-# write_db_entry()
-def write_db_entry(geohash, area_code, geohash_dir):
-    dpath = os.path.join(
-        geohash_dir, os.path.sep.join([c for c in geohash[:-1]]))
-    fpath = os.path.join(dpath, geohash[-1] + '_' + area_code)
-    if not os.path.isdir(dpath):
-        os.makedirs(dpath)
-    open(fpath, 'w').close()
+# make_areacode_directories()
+def make_areacode_directories(json_files, areacode_dir):
+    # write_entry()
+    def write_entry(geohash, area_code):
+        dpath = os.path.join(
+            areacode_dir, os.path.sep.join([c for c in geohash[:-1]]))
+        fpath = os.path.join(dpath, geohash[-1] + '_' + area_code)
+        if not os.path.isdir(dpath):
+            os.makedirs(dpath)
+        open(fpath, 'w').close()
+        return
+    #
+    for json_file in json_files:
+        with open(json_file, 'r') as fp:
+            hash2area = json.load(fp)
+            for (geohash, area_code) in hash2area.items():
+                write_entry(geohash, str(area_code))
     return
 
-# make_db_entries():
-def make_db_entries(args): 
-    (i_kmls, n_kmls, kml_file, n_geohash, geohash_dir) = args
+# merge_jsons():
+def merge_jsons(src_files, dst_file):
+    with open(dst_file, 'w') as fdst:
+        fdst.write('{')
+        for src in src_files:
+            with open(src, 'r') as fsrc:
+                s = fsrc.read()
+                assert(s[0] == '{' and s[-1] == '}')
+                fdst.write(s[1:-1])
+        fdst.write('}')
+    return
+
+# make_json():
+def make_json(args): 
+    (i_kmls, n_kmls, kml_file, n_geohash, json_dir) = args
     area_code = get_area_code(kml_file)
+    # geohashes whose area is $area_code.
+    geohashes = []
     #
     def make_polygon(lat_lng_range):
         ((minlat, maxlat), (minlng, maxlng)) = lat_lng_range
@@ -267,13 +292,13 @@ def make_db_entries(args):
             polygon1 = make_polygon(range1)
             if polygon.intersects(polygon1):
                 if polygon.contains(polygon1):
-                    write_db_entry(geohash1, area_code, geohash_dir)
+                    geohashes.append(geohash1)
                 elif len(geohash1) < n_geohash:
                     doit(geohash1, polygon)
                 else:
                     center = make_point(range1)
                     if polygon.contains(center):
-                        write_db_entry(geohash1, area_code, geohash_dir)
+                        geohashes.append(geohash1)
             else:
                 # polygon1 is outside of polygon.
                 pass    # nop
@@ -286,15 +311,19 @@ def make_db_entries(args):
             doit(geohash, polygon)
         else:
             # Okinotori case?
-            write_db_entry(geohash, area_code, geohash_dir)
-    print('Finished: [%d/%d] parsing %s (%.2f sec)' % (
-        i_kmls, n_kmls, kml_file, time() - t0))
+            geohashes.append(geohash)
+    json_file = os.path.join(json_dir, area_code + '.json')
+    hash2area = {geohash: int(area_code) for geohash in geohashes}
+    with open(json_file, 'w') as fp:
+        json.dump(hash2area, fp, indent=None)
+    print('Finished: [%d/%d] %s -> %s (%.2f sec)' % (
+        i_kmls, n_kmls, kml_file, json_file, time() - t0))
     return
 
 ####
 
 # make_db():
-def make_db(ksj_files, dst_dir, n_geohash=7):
+def make_db(ksj_files, dst_dir, db_type='json', n_geohash=7):
     t0 = time()
     # ${dst_dir}/kml
     kml_dir = os.path.join(dst_dir, 'kml')
@@ -307,15 +336,30 @@ def make_db(ksj_files, dst_dir, n_geohash=7):
     print('start creating database.')
     print('- ksj_files: %s' % ','.join(ksj_files))
     print('- dst_dir: %s' % dst_dir)
+    print('- db_type: %s' % db_type)
     print('- geohash_length: %d' % n_geohash)
     print('- cpu_count: %d' % mp.cpu_count())
-    geohash_dir = os.path.join(dst_dir, 'geohash')
+    json_dir = os.path.join(dst_dir, 'json')
+    assert(not os.path.isdir(json_dir))
+    os.makedirs(json_dir)
     mp_args = [
-        (i_kmls, len(kml_files), kml_file, n_geohash, geohash_dir)
+        (i_kmls, len(kml_files), kml_file, n_geohash, json_dir)
         for (i_kmls, kml_file) in enumerate(kml_files)
     ]
     pool = mp.Pool()
-    pool.map(make_db_entries, mp_args)
+    pool.map(make_json, mp_args)
+    json_files = [
+        os.path.join(json_dir, f) for f in os.listdir(json_dir)
+    ]
+    if db_type == 'json':
+        print('Merging json files...')
+        json_file = os.path.join(dst_dir, 'area_code.json')
+        merge_jsons(json_files, json_file)
+    elif db_type == 'fs':
+        print('Making area_code directories from json...')
+        areacode_dir = os.path.join(dst_dir, 'area_code')
+        make_areacode_directories(json_files, areacode_dir)
+    shutil.rmtree(json_dir)
     print('Finished: %.2f sec' % (time() - t0))
     return
 
