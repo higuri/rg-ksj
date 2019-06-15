@@ -12,9 +12,11 @@ import shutil
 import sys
 from src.make_db import make_db
 
+src_dir = os.path.join('.', 'src')
 build_dir = os.path.join('.', 'build')
 dist_dir = os.path.join('.', 'dist')
-src_dir = os.path.join('.', 'src')
+dist_json_db = os.path.join(dist_dir, 'area_code.json')
+dist_fs_db = os.path.join(dist_dir, 'area_code')
 
 # build():
 def build(ksj_files, db_type, n_geohash):
@@ -36,11 +38,11 @@ def build(ksj_files, db_type, n_geohash):
     if db_type == 'json':
         shutil.copyfile(
             os.path.join(build_dir, 'area_code.json'),
-            os.path.join(dist_dir, 'area_code.json'))
+            dist_json_db)
     elif db_type == 'fs':
         shutil.copytree(
             os.path.join(build_dir, 'area_code'),
-            os.path.join(dist_dir, 'area_code'))
+            dist_fs_db)
     return
 
 # clean():
@@ -59,16 +61,19 @@ def clean():
     return
 
 # main():
-# TODO: specify geohash length by cmdline parameter.
 def main(argv):
-    def help():
-        print('python3 main.py')
-        print(' build [-t {json, fs}] [-n $(n_geohash)] ksj_files')
-        print(' test lat lng')
-        print(' clean')
-        return
+    def help(target=None):
+        cmd = '\npython3 make.py'
+        usage = 'Usage:'
+        if target is None or target == 'build':
+            usage += cmd + ' build [-t {json, fs}] [-n $(n_geohash)] ksj_files'
+        if target is None or target == 'test':
+            usage += cmd + ' test lat lng'
+        if target is None or target == 'clean':
+            usage += cmd + ' clean'
+        return usage
     if len(argv) < 1:
-        help()
+        print(help())
         return -1
     cmd = argv[0]
     db_type = 'json'
@@ -82,22 +87,33 @@ def main(argv):
                 db_type = val
     except getopt.error as err:
         print(err)
-        help()
+        print(help())
         return -1
     if cmd == 'build':
         if len(args) < 1:
-            help()
+            print(help(cmd))
             return -1
         build(args, db_type, n_geohash)
     elif cmd == 'test':
-        if len(args) < 2:
-            help()
+        db_path = None
+        if os.path.isfile(dist_json_db):
+            from dist.query_db import get_area_from_json_db as get_area
+            db_path = dist_json_db
+        elif os.path.isdir(dist_fs_db):
+            from dist.query_db import get_area_from_fs_db as get_area
+            db_path = dist_fs_db
+        else:
+            print('No database found. Run `build` first.')
             return -1
-        from dist.query_db import get_area
+        if len(args) < 2:
+            print(help(cmd))
+            return -1
         (lat, lng) = [float(v) for v in args[:2]]
-        print(get_area(lat, lng, os.path.join(dist_dir)))
+        print(get_area(lat, lng, db_path))
     elif cmd == 'clean':
         clean()
+    elif cmd == 'help':
+        print(help())
     else:
         raise ValueError()
     return

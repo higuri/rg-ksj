@@ -6,19 +6,23 @@ import os
 import sys
 from .geohash import encode
 
-# get_area():
-def get_area(lat, lng, db_root='build'):
-    path = os.path.join(db_root, 'geohash')
-    if not os.path.isdir(path):
+# get_area_from_json_db():
+def get_area_from_json_db(lat, lng, db_file):
+    return
+
+# get_area_from_fs_db():
+def get_area_from_fs_db(lat, lng, db_dir):
+    if not os.path.isdir(db_dir):
         raise ValueError()
+    dir1 = db_dir
     #print(encode(lat, lng, 7))
     for c in encode(lat, lng, 7):
-        path = os.path.join(path, c)
-        if os.path.isdir(path):
+        dir1 = os.path.join(dir1, c)
+        if os.path.isdir(dir1):
             continue
         else:
             # TODO: test on windows (glob)
-            files = (glob.glob(path + '_*'))
+            files = (glob.glob(dir1 + '_*'))
             if 0 < len(files):
                 assert(len(files) == 1)
                 (_, area_code) = os.path.basename(files[0]).split('_')
