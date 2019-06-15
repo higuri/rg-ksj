@@ -112,10 +112,8 @@ def main(argv):
         print(get_area(lat, lng, db_path))
     elif cmd == 'clean':
         clean()
-    elif cmd == 'help':
+    else:   # including cmd == 'help'.
         print(help())
-    else:
-        raise ValueError()
     return
     
 if __name__ == "__main__":

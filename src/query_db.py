@@ -4,11 +4,22 @@
 import glob
 import os
 import sys
+import json
 from .geohash import encode
 
 # get_area_from_json_db():
 def get_area_from_json_db(lat, lng, db_file):
-    return
+    if not os.path.isfile(db_file):
+        raise ValueError()
+    hash2area = {}
+    with open(db_file, 'r') as fp:
+        hash2area = json.load(fp)
+    hash1 = encode(lat, lng, 7)
+    while 0 < len(hash1):
+        if hash1 in hash2area:
+            return hash2area[hash1]
+        hash1 = hash1[:-1]
+    return None
 
 # get_area_from_fs_db():
 def get_area_from_fs_db(lat, lng, db_dir):
