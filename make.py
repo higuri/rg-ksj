@@ -6,7 +6,7 @@
 # - test
 
 import getopt
-import glob
+from glob import glob
 import os
 import shutil
 import sys
@@ -54,9 +54,9 @@ def clean():
     if os.path.isdir(dist_dir):
         shutil.rmtree(dist_dir)
     # rm *.pyc
-    for dpath in glob.glob('./src/**/__pycache__', recursive=True):
+    for dpath in glob('./src/**/__pycache__', recursive=True):
         shutil.rmtree(dpath)
-    for fpath in glob.glob('./src/**/*.pyc', recursive=True):
+    for fpath in glob('./src/**/*.pyc', recursive=True):
         os.remove(fpath)
     return
 

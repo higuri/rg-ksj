@@ -11,6 +11,7 @@
 #   TODO
 #      
 
+from glob import glob
 import json
 import os
 import shutil
@@ -35,6 +36,10 @@ KSJ_NS = {
     'xsi': 'http://www.w3.org/2001/XMLSchema-instance',
     'xlink': 'http://www.w3.org/1999/xlink'
 }
+
+# get_pref_code():
+def get_pref_code(area_code):
+    return area_code[:2]
 
 # get_area_code():
 def get_area_code(kml_file):
@@ -224,8 +229,7 @@ def make_kml_files(ksj_file, dst_dir):
                 polygon for (polygon, _ ) in make_polygons(curve_file)
             ]
         # kml/: [polygon...] -> .kml
-        pref_code = area_code[:2]
-        pref_dir = os.path.join(dst_dir, pref_code)
+        pref_dir = os.path.join(dst_dir, get_pref_code(area_code))
         if not os.path.isdir(pref_dir):
             os.makedirs(pref_dir)
         kml_file = os.path.join(pref_dir, area_code + '.kml')
@@ -255,17 +259,17 @@ def make_areacode_directories(json_files, areacode_dir):
     return
 
 # merge_jsons():
-def merge_jsons(src_files, dst_file):
-    with open(dst_file, 'w') as fdst:
+def merge_jsons(json_files, json_file):
+    with open(json_file, 'w') as fdst:
         fdst.write('{')
-        for (i, src) in enumerate(src_files):
+        for (i, src) in enumerate(json_files):
             with open(src, 'r') as fsrc:
                 # we treat this file as plain text file,
                 # instead of parsing as json file (for efficiency).
                 s = fsrc.read()
                 assert(s[0] == '{' and s[-1] == '}')
                 fdst.write(s[1:-1])
-                if i != len(src_files) - 1:
+                if i != len(json_files) - 1:
                     fdst.write(',')
         fdst.write('}')
     return
@@ -316,11 +320,14 @@ def make_json(args):
         else:
             # Okinotori case?
             geohashes.append(geohash)
-    json_file = os.path.join(json_dir, area_code + '.json')
+    pref_dir = os.path.join(json_dir, get_pref_code(area_code))
+    if not os.path.isdir(pref_dir):
+        os.makedirs(pref_dir)
+    json_file = os.path.join(pref_dir, area_code + '.json')
     hash2area = {geohash: int(area_code) for geohash in geohashes}
     with open(json_file, 'w') as fp:
         json.dump(hash2area, fp, indent=None)
-    i_files = len(os.listdir(json_dir))
+    i_files = len(glob(json_dir + '/**/*.json', recursive=True))
     print('Finished: [%d/%d] %s -> %s (%.2f sec)' % (
         i_files, n_kml_files, kml_file, json_file, time() - t0))
     return
@@ -353,9 +360,7 @@ def make_db(ksj_files, dst_dir, db_type='json', n_geohash=7):
     ]
     pool = mp.Pool()
     pool.map(make_json, mp_args)
-    json_files = [
-        os.path.join(json_dir, f) for f in os.listdir(json_dir)
-    ]
+    json_files = glob(json_dir + '/**/*.json', recursive=True)
     if db_type == 'json':
         print('Merging json files...')
         json_file = os.path.join(dst_dir, 'area_code.json')
