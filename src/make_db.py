@@ -258,11 +258,15 @@ def make_areacode_directories(json_files, areacode_dir):
 def merge_jsons(src_files, dst_file):
     with open(dst_file, 'w') as fdst:
         fdst.write('{')
-        for src in src_files:
+        for (i, src) in enumerate(src_files):
             with open(src, 'r') as fsrc:
+                # we treat this file as plain text file,
+                # instead of parsing as json file (for efficiency).
                 s = fsrc.read()
                 assert(s[0] == '{' and s[-1] == '}')
                 fdst.write(s[1:-1])
+                if i != len(src_files) - 1:
+                    fdst.write(',')
         fdst.write('}')
     return
 
