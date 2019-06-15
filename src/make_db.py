@@ -268,7 +268,7 @@ def merge_jsons(src_files, dst_file):
 
 # make_json():
 def make_json(args): 
-    (i_kmls, n_kmls, kml_file, n_geohash, json_dir) = args
+    (kml_file, n_kml_files, n_geohash, json_dir) = args
     area_code = get_area_code(kml_file)
     # geohashes whose area is $area_code.
     geohashes = []
@@ -316,8 +316,9 @@ def make_json(args):
     hash2area = {geohash: int(area_code) for geohash in geohashes}
     with open(json_file, 'w') as fp:
         json.dump(hash2area, fp, indent=None)
+    i_files = len(os.listdir(json_dir))
     print('Finished: [%d/%d] %s -> %s (%.2f sec)' % (
-        i_kmls, n_kmls, kml_file, json_file, time() - t0))
+        i_files, n_kml_files, kml_file, json_file, time() - t0))
     return
 
 ####
@@ -343,8 +344,8 @@ def make_db(ksj_files, dst_dir, db_type='json', n_geohash=7):
     assert(not os.path.isdir(json_dir))
     os.makedirs(json_dir)
     mp_args = [
-        (i_kmls, len(kml_files), kml_file, n_geohash, json_dir)
-        for (i_kmls, kml_file) in enumerate(kml_files)
+        (kml_file, len(kml_files), n_geohash, json_dir)
+        for kml_file in kml_files
     ]
     pool = mp.Pool()
     pool.map(make_json, mp_args)
