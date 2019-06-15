@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # query_db.py
 
-import glob
+from glob import glob
 import os
 import sys
 import json
@@ -25,21 +25,17 @@ def get_area_from_json_db(lat, lng, db_file):
 def get_area_from_fs_db(lat, lng, db_dir):
     if not os.path.isdir(db_dir):
         raise ValueError()
-    dir1 = db_dir
-    #print(encode(lat, lng, 7))
-    for c in encode(lat, lng, 7):
-        dir1 = os.path.join(dir1, c)
-        if os.path.isdir(dir1):
-            continue
-        else:
-            # TODO: test on windows (glob)
-            files = (glob.glob(dir1 + '_*'))
-            if 0 < len(files):
-                assert(len(files) == 1)
-                (_, area_code) = os.path.basename(files[0]).split('_')
-                return area_code
-            else:
-                return None
+    hash1 = encode(lat, lng, 7)
+    while 0 < len(hash1):
+        basepath = os.path.join(
+            db_dir, hash1.join(os.path.separator) + '_')
+        files = glob(baasepath + '*') # TODO: test on windows (glob)
+        if 0 < len(files):
+            assert(len(files) == 1)
+            # filename format: ${geohash_character}_${area_code}
+            (_, area_code) = os.path.basename(files[0]).split('_')
+            return area_code
+        hash1 = hash1[:-1]
     return None
 
 # main():

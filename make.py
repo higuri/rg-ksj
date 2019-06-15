@@ -95,6 +95,7 @@ def main(argv):
             return -1
         build(args, db_type, n_geohash)
     elif cmd == 'test':
+        # TODO: add db spec(n_chars)
         db_path = None
         if os.path.isfile(dist_json_db):
             from dist.query_db import get_area_from_json_db as get_area
