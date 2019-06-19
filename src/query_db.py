@@ -28,8 +28,8 @@ def get_area_from_fs_db(lat, lng, db_dir):
     hash1 = encode(lat, lng, 7)
     while 0 < len(hash1):
         basepath = os.path.join(
-            db_dir, hash1.join(os.path.separator) + '_')
-        files = glob(baasepath + '*') # TODO: test on windows (glob)
+            db_dir, os.path.sep.join(hash1) + '_')
+        files = glob(basepath + '*') # TODO: test on windows (glob)
         if 0 < len(files):
             assert(len(files) == 1)
             # filename format: ${geohash_character}_${area_code}
