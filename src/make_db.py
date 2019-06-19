@@ -333,23 +333,23 @@ def make_json(args):
 ####
 
 # make_db():
-def make_db(ksj_files, dst_dir, db_type='json', n_geohash=7):
+def make_db(ksj_files, db_type, build_dir, dst_db_path, n_geohash=7):
     t0 = time()
-    # ${dst_dir}/kml
-    kml_dir = os.path.join(dst_dir, 'kml')
+    # ${build_dir}/kml
+    kml_dir = os.path.join(build_dir, 'kml')
     kml_files = []
     for ksj_file in ksj_files:
         # parse
         print('reading: %s...' % ksj_file)
         kml_files += make_kml_files(ksj_file, kml_dir)
-    # ${dst_dir}/geohash
+    # ${build_dir}/geohash
     print('start creating database.')
     print('- ksj_files: %s' % ','.join(ksj_files))
-    print('- dst_dir: %s' % dst_dir)
+    print('- build_dir: %s' % build_dir)
     print('- db_type: %s' % db_type)
     print('- geohash_length: %d' % n_geohash)
     print('- cpu_count: %d' % mp.cpu_count())
-    json_dir = os.path.join(dst_dir, 'json')
+    json_dir = os.path.join(build_dir, 'json')
     assert(not os.path.isdir(json_dir))
     os.makedirs(json_dir)
     mp_args = [
@@ -361,14 +361,15 @@ def make_db(ksj_files, dst_dir, db_type='json', n_geohash=7):
     json_files = glob(json_dir + '/**/*.json', recursive=True)
     if db_type == 'json':
         print('Merging json files...')
-        json_file = os.path.join(dst_dir, 'area_code.json')
-        merge_jsons(json_files, json_file)
+        merge_jsons(json_files, dst_db_path)
     elif db_type == 'zip':
-        print('Making a zip file from json...')
-        areacode_dir = os.path.join(dst_dir, 'area_code')
+        print('Making file structure from json files...')
+        areacode_dir = os.path.join(build_dir, 'area_code')
         make_areacode_directories(json_files, areacode_dir)
-        zip_basepath = os.path.join(dst_dir, 'area_code')
-        shutil.make_archive(zip_basepath, 'zip', areacode_dir)
+        print('Zipping file structure...')
+        (dst_basepath, ext) = os.path.splitext(dst_db_path)
+        assert(ext == '.zip')
+        shutil.make_archive(dst_basepath, 'zip', areacode_dir)
     print('Finished: %.2f sec' % (time() - t0))
     return
 
