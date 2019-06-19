@@ -69,7 +69,7 @@ def main(argv):
         cmd = '\npython3 make.py'
         usage = 'Usage:'
         if target is None or target == 'build':
-            usage += cmd + ' build [-t {json, zip}] [-n $(n_geohash)] ksj_files'
+            usage += cmd + ' build [--json, --zip] [-n $(n_geohash)] ksj_files'
         if target is None or target == 'test':
             usage += cmd + ' test lat lng'
         if target is None or target == 'clean':
