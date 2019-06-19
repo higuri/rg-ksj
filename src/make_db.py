@@ -157,8 +157,6 @@ def make_curve_files_from_etree(etree_root, get_curve_fpath):
              if 0 < len(s):
                 (lat, lng) = [float(v) for v in s.split(' ')]
                 points.append((lat, lng))
-        # 閉じられていること。
-        # assert(points[0].is_same_coordinate(points[-1]))
         return Polygon(points)
     for curve in etree_root.findall('gml:Curve', KSJ_NS):
         curve_id = curve.get('{%s}id' % KSJ_NS['gml'])
@@ -243,12 +241,12 @@ def make_kml_files(ksj_file, dst_dir):
 def make_areacode_directories(json_files, areacode_dir):
     # write_entry()
     def write_entry(geohash, area_code):
-        dpath = os.path.join(
-            areacode_dir, os.path.sep.join([c for c in geohash[:-1]]))
-        fpath = os.path.join(dpath, geohash[-1] + '_' + area_code)
-        if not os.path.isdir(dpath):
-            os.makedirs(dpath)
-        open(fpath, 'w').close()
+        fpath = os.path.join(
+            areacode_dir, os.path.sep.join(geohash))
+        if not os.path.isdir(os.path.dirname(fpath)):
+            os.makedirs(os.path.dirname(fpath))
+        with open(fpath, 'w') as fp:
+            fp.write(area_code)
         return
     #
     for json_file in json_files:
@@ -365,11 +363,12 @@ def make_db(ksj_files, dst_dir, db_type='json', n_geohash=7):
         print('Merging json files...')
         json_file = os.path.join(dst_dir, 'area_code.json')
         merge_jsons(json_files, json_file)
-    elif db_type == 'fs':
-        print('Making area_code directories from json...')
+    elif db_type == 'zip':
+        print('Making a zip file from json...')
         areacode_dir = os.path.join(dst_dir, 'area_code')
         make_areacode_directories(json_files, areacode_dir)
-    shutil.rmtree(json_dir)
+        zip_basepath = os.path.join(dst_dir, 'area_code')
+        shutil.make_archive(zip_basepath, 'zip', areacode_dir)
     print('Finished: %.2f sec' % (time() - t0))
     return
 

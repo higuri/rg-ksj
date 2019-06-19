@@ -16,7 +16,7 @@ src_dir = os.path.join('.', 'src')
 build_dir = os.path.join('.', 'build')
 dist_dir = os.path.join('.', 'dist')
 dist_json_db = os.path.join(dist_dir, 'area_code.json')
-dist_fs_db = os.path.join(dist_dir, 'area_code')
+dist_zip_db = os.path.join(dist_dir, 'area_code.zip')
 
 # build():
 def build(ksj_files, db_type, n_geohash):
@@ -28,21 +28,14 @@ def build(ksj_files, db_type, n_geohash):
     make_db(ksj_files, build_dir, db_type, n_geohash)
     # dist
     print('Making distributables...')
-    os.makedirs(dist_dir)
+    # TODO
+    shutil.move(build_dir, dist_dir)
     shutil.copyfile(
         os.path.join(src_dir, 'query_db.py'),
         os.path.join(dist_dir, 'query_db.py'))
     shutil.copyfile(
         os.path.join(src_dir, 'geohash.py'),
         os.path.join(dist_dir, 'geohash.py'))
-    if db_type == 'json':
-        shutil.copyfile(
-            os.path.join(build_dir, 'area_code.json'),
-            dist_json_db)
-    elif db_type == 'fs':
-        shutil.copytree(
-            os.path.join(build_dir, 'area_code'),
-            dist_fs_db)
     return
 
 # clean():
@@ -66,7 +59,7 @@ def main(argv):
         cmd = '\npython3 make.py'
         usage = 'Usage:'
         if target is None or target == 'build':
-            usage += cmd + ' build [-t {json, fs}] [-n $(n_geohash)] ksj_files'
+            usage += cmd + ' build [-t {json, zip}] [-n $(n_geohash)] ksj_files'
         if target is None or target == 'test':
             usage += cmd + ' test lat lng'
         if target is None or target == 'clean':
@@ -84,6 +77,9 @@ def main(argv):
             if opt == '-n':
                 n_geohash = int(val)
             elif opt == '-t':
+                if val not in ('json', 'zip'):
+                    print(help())
+                    return -1
                 db_type = val
     except getopt.error as err:
         print(err)
@@ -100,9 +96,9 @@ def main(argv):
         if os.path.isfile(dist_json_db):
             from dist.query_db import get_area_from_json_db as get_area
             db_path = dist_json_db
-        elif os.path.isdir(dist_fs_db):
-            from dist.query_db import get_area_from_fs_db as get_area
-            db_path = dist_fs_db
+        elif os.path.isfile(dist_zip_db):
+            from dist.query_db import get_area_from_zip_db as get_area
+            db_path = dist_zip_db
         else:
             print('No database found. Run `build` first.')
             return -1
