@@ -6,7 +6,7 @@
 #   Data Source:
 #   http://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-v2_3.html
 # [Output]
-# - area_code/
+# - area_code.zip
 # - area_code.json
 #   TODO
 #      
@@ -253,7 +253,7 @@ def make_areacode_directories(json_files, areacode_dir):
         with open(json_file, 'r') as fp:
             hash2area = json.load(fp)
             for (geohash, area_code) in hash2area.items():
-                write_entry(geohash, str(area_code))
+                write_entry(geohash, area_code)
     return
 
 # merge_jsons():
@@ -322,7 +322,7 @@ def make_json(args):
     if not os.path.isdir(pref_dir):
         os.makedirs(pref_dir)
     json_file = os.path.join(pref_dir, area_code + '.json')
-    hash2area = {geohash: int(area_code) for geohash in geohashes}
+    hash2area = {geohash: area_code for geohash in geohashes}
     with open(json_file, 'w') as fp:
         json.dump(hash2area, fp, indent=None)
     i_files = len(glob(json_dir + '/**/*.json', recursive=True))
