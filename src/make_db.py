@@ -63,19 +63,40 @@ def make_polygons(kml_file):
                     if lng < minlng: minlng = lng
                     if maxlng < lng: maxlng = lng
                 points.append((lat, lng))
-        return (Polygon(points), ((minlat, maxlat), (minlng, maxlng)))
+        return (points, ((minlat, maxlat), (minlng, maxlng)))
     retval = []
     tree = ET.parse(kml_file)
     root = tree.getroot()
     kml_doc = root.find('kml:Document', KML_NS)
     for placemark in kml_doc.findall('kml:Placemark', KML_NS):
-        for polygon in placemark.findall('kml:Polygon', KML_NS):
-            bounds = polygon.find('kml:outerBoundaryIs', KML_NS)
+        for kml_polygon in placemark.findall('kml:Polygon', KML_NS):
+            # outerBoundary (exterios)
+            bounds = kml_polygon.find('kml:outerBoundaryIs', KML_NS)
             ring = bounds.find('kml:LinearRing', KML_NS)
             coords = ring.find('kml:coordinates', KML_NS)
-            (polygon, lat_lng_range) = parse_coords_lines(coords.text)
+            (outer_points, lat_lng_range) = parse_coords_lines(coords.text)
+            # innerBoundary (interior)
+            inner_points = []
+            for bounds in kml_polygon.findall('kml:innerBoundaryIs', KML_NS):
+                ring = bounds.find('kml:LinearRing', KML_NS)
+                coords = ring.find('kml:coordinates', KML_NS)
+                inner_points.append(parse_coords_lines(coords.text)[0])
+            polygon = Polygon(outer_points, inner_points)
             retval.append((polygon, lat_lng_range))
     return retval
+
+# make_polygon_from_ext_ints():
+def make_polygon_from_ext_ints(exterior_kml_file, interior_kml_files):
+    polygons0 = make_polygons(exterior_kml_file)
+    assert(len(polygons0) == 1)
+    (polygon0, _) = polygons0[0]
+    interior_points = []
+    for interior_kml_file in interior_kml_files:
+        polygons1 = make_polygons(interior_kml_file)
+        assert(len(polygons1) == 1)
+        (polygon1, _) = polygons1[0]
+        interior_points.append(polygon1.exterior.coords)
+    return Polygon(polygon0.exterior.coords, interior_points)
 
 # make_kml_file(): [polygon] -> kml_file
 def make_kml_file(polygons, title, dst_file):
@@ -88,6 +109,7 @@ def make_kml_file(polygons, title, dst_file):
         f.write('<Placemark id="%d">\n' % (i+1))
         f.write('<name>%d</name>\n' % (i+1))
         f.write('<Polygon>\n')
+        # outerBoundary (exterior)
         f.write('<outerBoundaryIs>\n')
         f.write('<LinearRing>\n')
         f.write('<coordinates>\n')
@@ -96,6 +118,16 @@ def make_kml_file(polygons, title, dst_file):
         f.write('</coordinates>\n')
         f.write('</LinearRing>\n')
         f.write('</outerBoundaryIs>\n')
+        # innerBoundary (interior)
+        for interior in polygon.interiors:
+            f.write('<innerBoundaryIs>\n')
+            f.write('<LinearRing>\n')
+            f.write('<coordinates>\n')
+            for (lat, lng) in interior.coords:
+                f.write(' %s,%s\n' % (lng, lat))
+            f.write('</coordinates>\n')
+            f.write('</LinearRing>\n')
+            f.write('</innerBoundaryIs>\n')
         f.write('</Polygon>\n')
         f.write('</Placemark>\n')
     f.write('</Document>\n')
@@ -103,27 +135,38 @@ def make_kml_file(polygons, title, dst_file):
     f.close()
     return
 
-# make_sfid2cvids_dict():
-def make_sfid2cvids_dict(etree_root):
+# make_sfid2cvids():
+def make_sfid2cvids(etree_root):
+    # surface_id -> (exterior_curve_id, [interior_curve_id,..])
     sfid2cvids = {}
     for surface in etree_root.findall('gml:Surface', KSJ_NS):
         surface_id = surface.get('{%s}id' % KSJ_NS['gml'])
         patches = surface.find('gml:patches', KSJ_NS)
         patch = patches.find('gml:PolygonPatch', KSJ_NS)
+        # Polygon:exterior
         exterior = patch.find('gml:exterior', KSJ_NS)
-        # TODO: interior
-        ring = exterior.find('gml:Ring', KSJ_NS)
-        curveMember = ring.find('gml:curveMember', KSJ_NS)
-        curveRef = curveMember.get('{%s}href' % KSJ_NS['xlink'])
-        curve_id = curveRef.replace('#', '')
-        sfid2cvids[surface_id] = [curve_id]
+        ext_ring = exterior.find('gml:Ring', KSJ_NS)
+        ext_curveMember = ext_ring.find('gml:curveMember', KSJ_NS)
+        ext_curveRef = ext_curveMember.get('{%s}href' % KSJ_NS['xlink'])
+        ext_curve_id = ext_curveRef.replace('#', '')
+        # Polygon:interior
+        interiors = patch.findall('gml:interior', KSJ_NS)
+        int_curve_ids = []
+        for interior in interiors:
+            int_ring = interior.find('gml:Ring', KSJ_NS)
+            int_curveMember = int_ring.find('gml:curveMember', KSJ_NS)
+            int_curveRef = int_curveMember.get(
+                '{%s}href' % KSJ_NS['xlink'])
+            int_curve_id = int_curveRef.replace('#', '')
+            int_curve_ids.append(int_curve_id)
+        sfid2cvids[surface_id] = (ext_curve_id, int_curve_ids)
     return sfid2cvids
 
-# make_areacode2sfids_dict():
-def make_areacode2sfids_dict(etree_root):
+# make_areacode2sfids():
+def make_areacode2sfids(ksj_root):
     areacode2sfids = {}
     areacode2areaname = {}
-    for boundary in etree_root.findall('ksj:AdministrativeBoundary', KSJ_NS):
+    for boundary in ksj_root.findall('ksj:AdministrativeBoundary', KSJ_NS):
         bounds = boundary.find('ksj:bounds', KSJ_NS)
         boundsRef = bounds.get('{%s}href' % KSJ_NS['xlink'])
         surface_id = boundsRef.replace('#', '')
@@ -147,8 +190,8 @@ def make_areacode2sfids_dict(etree_root):
             areacode2areaname[area_code] = '%s,%s' % (pref_name, city_name)
     return (areacode2sfids, areacode2areaname)
 
-# make_curve_files_from_etree():
-def make_curve_files_from_etree(etree_root, get_curve_fpath):
+# make_curve_files():
+def make_curve_files(ksj_root, get_curve_fpath):
     # make_polygon():
     def make_polygon(pos_list_text):
         points = []
@@ -158,7 +201,7 @@ def make_curve_files_from_etree(etree_root, get_curve_fpath):
                 (lat, lng) = [float(v) for v in s.split(' ')]
                 points.append((lat, lng))
         return Polygon(points)
-    for curve in etree_root.findall('gml:Curve', KSJ_NS):
+    for curve in ksj_root.findall('gml:Curve', KSJ_NS):
         curve_id = curve.get('{%s}id' % KSJ_NS['gml'])
         segments = curve.find('gml:segments', KSJ_NS)
         segment = segments.find('gml:LineStringSegment', KSJ_NS)
@@ -170,32 +213,25 @@ def make_curve_files_from_etree(etree_root, get_curve_fpath):
         make_kml_file([polygon], curve_id, fpath)
     return
 
-# make_curve_files():
-def make_curve_files(ksj_file, dst_dir):
-    # get_curve_fpath():
-    CURVE_ID_PAT = re.compile(r'cv([0-9]+)_[0-9]+')
-    def get_curve_fpath(curve_id):
-        m = CURVE_ID_PAT.match(curve_id)
-        assert(m is not None)
-        i = int(m.group(1))
-        # max 1000 files / directory (for debuggability).
-        dpath = os.path.join(dst_dir, str(i // 1000))
-        return os.path.join(dpath, curve_id + '.kml')
-    etree_root = ET.parse(ksj_file).getroot()
-    # ksj(etree) -> curve files (.kml)
-    make_curve_files_from_etree(etree_root, get_curve_fpath)
-    # ksj(etree) -> {surface_id: [curve_id]}
-    sfid2cvids = make_sfid2cvids_dict(etree_root)
-    (areacode2sfids, areacode2areaname) = make_areacode2sfids_dict(etree_root)
+# make_areacode2curvefiles():
+def make_areacode2curvefiles(ksj_root, get_curve_fpath):
+    sfid2cvids = make_sfid2cvids(ksj_root)
+    (areacode2sfids, areacode2areaname) = make_areacode2sfids(ksj_root)
+    # areacode2curvefiles
+    # - key: area_code
+    # - val: (interior_curve_id, [exterior_curve_id, ...]), ...
     areacode2curvefiles = {}
     for (area_code, surface_ids) in areacode2sfids.items():
         areacode2curvefiles[area_code] = []
         for surface_id in surface_ids:
-            # surface_id -> curve_id
-            for curve_id in sfid2cvids[surface_id]:
-                # curve_id -> curve file path
-                fpath = get_curve_fpath(curve_id)
-                areacode2curvefiles[area_code].append(fpath)
+            # surface_id -> curve_id (exterior_id, [interior_id,...])
+            (ext_cvid, int_cvids) = sfid2cvids[surface_id]
+            # curve_id -> curve file set (exterior, interiors)
+            curve_file_set = (
+                get_curve_fpath(ext_cvid),
+                [get_curve_fpath(int_cvid) for int_cvid in int_cvids]
+            )
+            areacode2curvefiles[area_code].append(curve_file_set)
     return areacode2curvefiles
 
 # make_kml_files():
@@ -214,18 +250,31 @@ def make_kml_files(ksj_file, dst_dir):
     tmp_dir = os.path.join(dst_dir, 'tmp')
     if os.path.isdir(tmp_dir):
         shutil.rmtree(tmp_dir)
-    ##
+    # get_curve_fpath():
+    CURVE_ID_PAT = re.compile(r'cv([0-9]+)_[0-9]+')
+    def get_curve_fpath(curve_id):
+        m = CURVE_ID_PAT.match(curve_id)
+        assert(m is not None)
+        i = int(m.group(1))
+        # up to 1000 files per directory (for debuggability).
+        dpath = os.path.join(tmp_dir, str(i // 1000))
+        return os.path.join(dpath, curve_id + '.kml')
     # ksj_file -> {area_code: [curve_file(.kml)...]}
     #   write out ksj:Curve objects (boundary fragments) to KML files.
-    areacode2curvefiles = make_curve_files(ksj_file, tmp_dir)
+    ksj_root = ET.parse(ksj_file).getroot()
+    # ksj_root -> curve files (.kml)
+    make_curve_files(ksj_root, get_curve_fpath)
+    # ksj_root -> {area_code: [(int_curve_file, ext_curve_files), ...]}
+    areacode2curvefiles = make_areacode2curvefiles(
+        ksj_root, get_curve_fpath)
     kml_files = []
     for (area_code, curve_files) in areacode2curvefiles.items():
         polygons = []
         # curve_file -> [polygon...]
-        for curve_file in curve_files:
-            polygons += [
-                polygon for (polygon, _ ) in make_polygons(curve_file)
-            ]
+        for (exterior_curve_file, interior_curve_files) in curve_files:
+            polygon = make_polygon_from_ext_ints(
+                exterior_curve_file, interior_curve_files)
+            polygons.append(polygon)
         # kml/: [polygon...] -> .kml
         pref_dir = os.path.join(dst_dir, get_pref_code(area_code))
         if not os.path.isdir(pref_dir):
@@ -243,6 +292,7 @@ def make_areacode_directories(json_files, areacode_dir):
     def write_entry(geohash, area_code):
         fpath = os.path.join(
             areacode_dir, os.path.sep.join(geohash))
+        assert(not os.path.isdir(fpath) and not os.path.isfile(fpath))
         if not os.path.isdir(os.path.dirname(fpath)):
             os.makedirs(os.path.dirname(fpath))
         with open(fpath, 'w') as fp:
@@ -251,8 +301,8 @@ def make_areacode_directories(json_files, areacode_dir):
     #
     for json_file in json_files:
         with open(json_file, 'r') as fp:
-            hash2area = json.load(fp)
-            for (geohash, area_code) in hash2area.items():
+            geohash2areacode = json.load(fp)
+            for (geohash, area_code) in geohash2areacode.items():
                 write_entry(geohash, area_code)
     return
 
@@ -322,9 +372,9 @@ def make_json(args):
     if not os.path.isdir(pref_dir):
         os.makedirs(pref_dir)
     json_file = os.path.join(pref_dir, area_code + '.json')
-    hash2area = {geohash: area_code for geohash in geohashes}
+    geohash2areacode = {geohash: area_code for geohash in geohashes}
     with open(json_file, 'w') as fp:
-        json.dump(hash2area, fp, indent=None)
+        json.dump(geohash2areacode, fp, indent=None)
     i_files = len(glob(json_dir + '/**/*.json', recursive=True))
     print('Finished: [%d/%d] %s -> %s (%.2f sec)' % (
         i_files, n_kml_files, kml_file, json_file, time() - t0))
