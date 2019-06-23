@@ -88,12 +88,12 @@ def make_polygons(kml_file):
 # make_polygon_from_ext_ints():
 def make_polygon_from_ext_ints(exterior_kml_file, interior_kml_files):
     polygons0 = make_polygons(exterior_kml_file)
-    assert(len(polygons0) == 1)
+    assert len(polygons0) == 1
     (polygon0, _) = polygons0[0]
     interior_points = []
     for interior_kml_file in interior_kml_files:
         polygons1 = make_polygons(interior_kml_file)
-        assert(len(polygons1) == 1)
+        assert len(polygons1) == 1
         (polygon1, _) = polygons1[0]
         interior_points.append(polygon1.exterior.coords)
     return Polygon(polygon0.exterior.coords, interior_points)
@@ -254,7 +254,7 @@ def make_kml_files(ksj_file, dst_dir):
     CURVE_ID_PAT = re.compile(r'cv([0-9]+)_[0-9]+')
     def get_curve_fpath(curve_id):
         m = CURVE_ID_PAT.match(curve_id)
-        assert(m is not None)
+        assert m is not None
         i = int(m.group(1))
         # up to 1000 files per directory (for debuggability).
         dpath = os.path.join(tmp_dir, str(i // 1000))
@@ -292,7 +292,11 @@ def make_areacode_directories(json_files, areacode_dir):
     def write_entry(geohash, area_code):
         fpath = os.path.join(
             areacode_dir, os.path.sep.join(geohash))
-        assert(not os.path.isdir(fpath) and not os.path.isfile(fpath))
+        # TODO: consider the case that a geohash (n=7) area
+        #       contains more than two area_codes.
+        #       ex) xpsn21e
+        #assert not os.path.isdir(fpath) and not os.path.isfile(fpath)
+        assert not os.path.isdir(fpath)
         if not os.path.isdir(os.path.dirname(fpath)):
             os.makedirs(os.path.dirname(fpath))
         with open(fpath, 'w') as fp:
@@ -315,7 +319,7 @@ def merge_jsons(json_files, json_file):
                 # we treat this file as plain text file,
                 # instead of parsing as json file (for efficiency).
                 s = fsrc.read()
-                assert(s[0] == '{' and s[-1] == '}')
+                assert s[0] == '{' and s[-1] == '}'
                 fdst.write(s[1:-1])
                 if i != len(json_files) - 1:
                     fdst.write(',')
@@ -400,7 +404,7 @@ def make_db(ksj_files, db_type, build_dir, dst_db_path, n_geohash=7):
     print('- geohash_length: %d' % n_geohash)
     print('- cpu_count: %d' % mp.cpu_count())
     json_dir = os.path.join(build_dir, 'json')
-    assert(not os.path.isdir(json_dir))
+    assert not os.path.isdir(json_dir)
     os.makedirs(json_dir)
     mp_args = [
         (kml_file, len(kml_files), n_geohash, json_dir)
@@ -418,7 +422,7 @@ def make_db(ksj_files, db_type, build_dir, dst_db_path, n_geohash=7):
         make_areacode_directories(json_files, areacode_dir)
         print('Zipping file structure...')
         (dst_basepath, ext) = os.path.splitext(dst_db_path)
-        assert(ext == '.zip')
+        assert ext == '.zip'
         shutil.make_archive(dst_basepath, 'zip', areacode_dir)
     print('Finished: %.2f sec' % (time() - t0))
     return
