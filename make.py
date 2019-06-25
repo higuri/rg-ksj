@@ -15,8 +15,9 @@ from src.make_db import make_db
 src_dir = os.path.join('.', 'src')
 build_dir = os.path.join('.', 'build')
 dist_dir = os.path.join('.', 'dist')
+fs_db_name = 'area_code'
 json_db_name = 'area_code.json'
-zip_db_name = 'area_code.zip'
+cdb_name = 'area_code.cdb'
 
 # build():
 def build(ksj_files, db_type, n_geohash):
@@ -28,24 +29,31 @@ def build(ksj_files, db_type, n_geohash):
     db_name = ''
     if db_type == 'json':
         db_name = json_db_name
-    elif db_type == 'zip':
-        db_name = zip_db_name
+    elif db_type == 'cdb':
+        db_name = cdb_name
+    elif db_type == 'fs':
+        db_name = fs_db_name
     else:
         raise ValueError()
     build_db_path = os.path.join(build_dir, db_name)
     make_db(ksj_files, db_type, build_dir, build_db_path, n_geohash)
+    dist_db_path = os.path.join(dist_dir, db_name)
     # dist
     print('Making distributables...')
     os.makedirs(dist_dir)
-    shutil.copyfile(
-        build_db_path,
-        os.path.join(dist_dir, db_name))
+    # - database
+    shutil.move(build_db_path, dist_db_path)
+    # - scripts
     shutil.copyfile(
         os.path.join(src_dir, 'query_db.py'),
         os.path.join(dist_dir, 'query_db.py'))
     shutil.copyfile(
         os.path.join(src_dir, 'geohash.py'),
         os.path.join(dist_dir, 'geohash.py'))
+    if db_type == 'cdb':
+        shutil.copyfile(
+            os.path.join(src_dir, 'cdb.py'),
+            os.path.join(dist_dir, 'cdb.py'))
     return
 
 # clean():
@@ -69,7 +77,7 @@ def main(argv):
         cmd = '\npython3 make.py'
         usage = 'Usage:'
         if target is None or target == 'build':
-            usage += cmd + ' build [--json, --zip] [-n $(n_geohash)] ksj_files'
+            usage += cmd + ' build [--json, --cdb, --fs] [-n $(n_geohash)] ksj_files'
         if target is None or target == 'test':
             usage += cmd + ' test lat lng'
         if target is None or target == 'clean':
@@ -82,14 +90,17 @@ def main(argv):
     db_type = 'json'
     n_geohash = 7
     try:
-        (options, args) = getopt.getopt(argv[1:], 'n:', ['json', 'zip'])
+        (options, args) = getopt.getopt(argv[1:],
+            'n:', ['json', 'cdb', 'fs'])
         for (opt, val) in options:
             if opt == '-n':
                 n_geohash = int(val)
             elif opt == '--json':
                 db_type = 'json'
-            elif opt == '--zip':
-                db_type = 'zip'
+            elif opt == '--cdb':
+                db_type = 'cdb'
+            elif opt == '--fs':
+                db_type = 'fs'
     except getopt.error as err:
         print(err)
         print(help())
@@ -105,9 +116,12 @@ def main(argv):
         if os.path.isfile(os.path.join(dist_dir, json_db_name)):
             from dist.query_db import get_area_from_json_db as get_area
             db_path = os.path.join(dist_dir, json_db_name)
-        elif os.path.isfile(os.path.join(dist_dir, zip_db_name)):
-            from dist.query_db import get_area_from_zip_db as get_area
-            db_path = os.path.join(dist_dir, zip_db_name)
+        elif os.path.isfile(os.path.join(dist_dir, cdb_name)):
+            from dist.query_db import get_area_from_cdb as get_area
+            db_path = os.path.join(dist_dir, cdb_name)
+        elif os.path.isdir(os.path.join(dist_dir, fs_db_name)):
+            from dist.query_db import get_area_from_fs_db as get_area
+            db_path = os.path.join(dist_dir, fs_db_name)
         else:
             print('No database found. Run `build` first.')
             return -1

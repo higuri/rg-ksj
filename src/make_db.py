@@ -21,9 +21,10 @@ import multiprocessing as mp
 import re
 import sys
 import xml.etree.ElementTree as ET
-# from .model import Point, Polygon
+from .cdb import cdbmake
+from .geohash import encode, decode
+from .geohash import get_longest_geohash, get_sub_geohashes
 from shapely.geometry import Point, Polygon
-from .geohash import encode, decode, get_longest_geohash, get_sub_geohashes
 
 ## XML Namespaces used in KML.
 KML_NS = {
@@ -326,6 +327,16 @@ def merge_jsons(json_files, json_file):
         fdst.write('}')
     return
 
+# make_cdb():
+def make_cdb(json_files, cdb_file):
+    cdb_writer = cdbmake(cdb_file)
+    for (i, src) in enumerate(json_files):
+        with open(src, 'r') as fsrc:
+            for (k, v) in json.load(fsrc).items():
+                cdb_writer.add(k.encode(), v.encode())
+    cdb_writer.finish()
+    return
+
 # make_json():
 def make_json(args): 
     (kml_file, n_kml_files, n_geohash, json_dir) = args
@@ -416,14 +427,12 @@ def make_db(ksj_files, db_type, build_dir, dst_db_path, n_geohash=7):
     if db_type == 'json':
         print('Merging json files...')
         merge_jsons(json_files, dst_db_path)
-    elif db_type == 'zip':
-        print('Making file structure from json files...')
-        areacode_dir = os.path.join(build_dir, 'area_code')
-        make_areacode_directories(json_files, areacode_dir)
-        print('Zipping file structure...')
-        (dst_basepath, ext) = os.path.splitext(dst_db_path)
-        assert ext == '.zip'
-        shutil.make_archive(dst_basepath, 'zip', areacode_dir)
+    elif db_type == 'cdb':
+        print('Making a cdb file from json files...')
+        make_cdb(json_files, dst_db_path)
+    elif db_type == 'fs':
+        print('Making a database in the form of file structures...')
+        make_areacode_directories(json_files, dst_db_path)
     print('Finished: %.2f sec' % (time() - t0))
     return
 
