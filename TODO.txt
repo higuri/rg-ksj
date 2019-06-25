@@ -1,9 +1,0 @@
-TODO.txt
-* area code -> area name
-* add db_type 'cdb'.
-  json: managed db
-  cdb: unmanaged server
-  fs: ?? (small data size?)
-* sample page (demo & test)
-  OSM, Google Maps API
-* README
