@@ -124,7 +124,6 @@ def get_sub_geohashes(geohash):
 
 if __name__ == "__main__":
     # encode
-    print(encode(34.35067, 134.04692))
     assert(encode(24.44944, 122.93361) == 'wsr7j6vs29z')
     assert(encode(20.42527, 136.06972) == 'x58u0q6cy63')
     assert(encode(24.28305, 153.98638) == 'xkmd0h97n8x')
