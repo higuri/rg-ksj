@@ -5,7 +5,8 @@
 
 let map;
 
-const API_URL = 'http://example.com/api/v1/';
+// const API_URL = 'http://example.com/api/v1/';
+const API_URL = 'http://35.230.98.253/api/v1/';
 
 /// OsmMap:
 class OsmMap {
