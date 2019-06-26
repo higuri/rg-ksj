@@ -6,9 +6,10 @@
 #   Data Source:
 #   http://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-v2_3.html
 # [Output]
-# - area_code.zip
-# - area_code.json
-#   TODO
+# TODO:
+# - fs
+# - json
+# - cdb
 #      
 
 from glob import glob
@@ -22,7 +23,7 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from .cdb import cdbmake
-from .geohash import encode, decode
+from .geohash import decode_to_range
 from .geohash import get_longest_geohash, get_sub_geohashes
 from shapely.geometry import Point, Polygon
 
@@ -45,6 +46,22 @@ def get_pref_code(area_code):
 # get_area_code():
 def get_area_code(kml_file):
     return os.path.splitext(os.path.basename(kml_file))[0]
+
+# make_polygon()
+def make_polygon(lat_lng_range):
+    ((minlat, maxlat), (minlng, maxlng)) = lat_lng_range
+    return Polygon([
+        (minlat, minlng),
+        (minlat, maxlng),
+        (maxlat, maxlng),
+        (maxlat, minlng),
+        (minlat, minlng)
+    ])
+
+# make_point()
+def make_point(lat_lng_range):
+    ((minlat, maxlat), (minlng, maxlng)) = lat_lng_range
+    return Point((minlat + maxlat) / 2, (maxlat + maxlng) / 2)
 
 # make_polygons(): kml_file -> [(polygon, lat_lng_range),...]
 def make_polygons(kml_file):
@@ -85,6 +102,24 @@ def make_polygons(kml_file):
             polygon = Polygon(outer_points, inner_points)
             retval.append((polygon, lat_lng_range))
     return retval
+
+# find_nearest_polygon():
+#   find the nearest polygon to geohash area
+#   from polygons defined in kml_files.
+def find_nearest_polygon(geohash, kml_files):
+    assert 0 < len(kml_files)
+    lat_lng_range = decode_to_range(geohash)
+    polygon0 = make_polygon(lat_lng_range)
+    min_distance = None
+    min_kml_file = None
+    for kml_file in kml_files:
+        for (polygon1, _) in make_polygons(kml_file):
+            d = polygon0.distance(polygon1)
+            if min_distance is None or d < min_distance:
+                min_distance = d
+                min_kml_file = kml_file
+    assert min_kml_file is not None
+    return min_kml_file
 
 # make_polygon_from_ext_ints():
 def make_polygon_from_ext_ints(exterior_kml_file, interior_kml_files):
@@ -293,11 +328,13 @@ def make_areacode_directories(json_files, areacode_dir):
     def write_entry(geohash, area_code):
         fpath = os.path.join(
             areacode_dir, os.path.sep.join(geohash))
-        # TODO: consider the case that a geohash (n=7) area
-        #       contains more than two area_codes.
-        #       ex) xpsn21e
-        #assert not os.path.isdir(fpath) and not os.path.isfile(fpath)
+        # - No duplication of geohash (one geohash -> one area code).
+        assert not os.path.isfile(fpath)
+        # - The sub-geohashes of the geohash whose area code is
+        #   already defined don't have their area code definitions.
+        dirpath = os.path.dirname(fpath)
         assert not os.path.isdir(fpath)
+        assert not os.path.isfile(dirpath)
         if not os.path.isdir(os.path.dirname(fpath)):
             os.makedirs(os.path.dirname(fpath))
         with open(fpath, 'w') as fp:
@@ -311,8 +348,38 @@ def make_areacode_directories(json_files, areacode_dir):
                 write_entry(geohash, area_code)
     return
 
-# merge_jsons():
-def merge_jsons(json_files, json_file):
+# review_json_files():
+def review_json_files(review_dir, dst_json):
+    with open(dst_json, 'w') as fdst:
+        fdst.write('{')
+        isFirstItem = True
+        for review_file in os.listdir(review_dir):
+            geohash = os.path.basename(review_file)
+            fpath = os.path.join(review_dir, review_file)
+            with open(fpath, 'r') as fsrc:
+                kml_files = [
+                    line for line in fsrc.read().splitlines()
+                    if line.strip() != ''
+                ]
+                area_code = None
+                if len(kml_files) < 1:
+                    continue
+                elif len(kml_files) == 1:
+                    area_code = get_area_code(kml_files[0])
+                else:
+                    kml_file = find_nearest_polygon(geohash, kml_files)
+                    area_code = get_area_code(kml_file)
+                assert(area_code is not None)
+                if isFirstItem:
+                    fdst.write('"%s": "%s"' % (geohash, area_code))
+                    isFirstItem = False
+                else:
+                    fdst.write(',"%s": "%s"' % (geohash, area_code))
+        fdst.write('}')
+    return
+
+# merge_json_files():
+def merge_json_files(json_files, json_file):
     with open(json_file, 'w') as fdst:
         fdst.write('{')
         for (i, src) in enumerate(json_files):
@@ -339,24 +406,18 @@ def make_cdb(json_files, cdb_file):
 
 # make_json():
 def make_json(args): 
-    (kml_file, n_kml_files, n_geohash, json_dir) = args
+    (kml_file, n_kml_files, n_geohash, json_dir, review_dir) = args
     area_code = get_area_code(kml_file)
-    # geohashes whose area is $area_code.
+    # geohashes whose area code is $area_code.
     geohashes = []
-    #
-    def make_polygon(lat_lng_range):
-        ((minlat, maxlat), (minlng, maxlng)) = lat_lng_range
-        return Polygon([
-            (minlat, minlng),
-            (minlat, maxlng),
-            (maxlat, maxlng),
-            (maxlat, minlng),
-            (minlat, minlng)
-        ])
-    #
-    def make_point(lat_lng_range):
-        ((minlat, maxlat), (minlng, maxlng)) = lat_lng_range
-        return Point((minlat + maxlat) / 2, (maxlat + maxlng) / 2)
+    # geohashes that may contain more than two area codes,
+    # one of them is $area_code.
+    geohashes_to_be_reviewed = {}
+    def add_to_review(geohash):
+        if geohash in geohashes_to_be_reviewed:
+            geohashes_to_be_reviewed[geohash].add(kml_file)
+        else:
+            geohashes_to_be_reviewed[geohash] = {kml_file}  # set
     #
     def doit(geohash, polygon):
         for (geohash1, range1) in get_sub_geohashes(geohash):
@@ -367,9 +428,8 @@ def make_json(args):
                 elif len(geohash1) < n_geohash:
                     doit(geohash1, polygon)
                 else:
-                    center = make_point(range1)
-                    if polygon.contains(center):
-                        geohashes.append(geohash1)
+                    # TODO: this makes process slow...
+                    add_to_review(geohash1)
             else:
                 # polygon1 is outside of polygon.
                 pass    # nop
@@ -381,8 +441,8 @@ def make_json(args):
         if len(geohash) < n_geohash:
             doit(geohash, polygon)
         else:
-            # Okinotori case?
-            geohashes.append(geohash)
+            add_to_review(geohash)
+    # write json files:
     pref_dir = os.path.join(json_dir, get_pref_code(area_code))
     if not os.path.isdir(pref_dir):
         os.makedirs(pref_dir)
@@ -390,6 +450,13 @@ def make_json(args):
     geohash2areacode = {geohash: area_code for geohash in geohashes}
     with open(json_file, 'w') as fp:
         json.dump(geohash2areacode, fp, indent=None)
+    # write files to be reviewed:
+    for (geohash1, kml_files1) in geohashes_to_be_reviewed.items():
+        # write file: ${review_dir}/${geohash1}
+        review_file = os.path.join(review_dir, geohash1)
+        with open(review_file, 'a') as fp:
+            for kml_file1 in kml_files1:
+                fp.write(kml_file1 + '\n')
     i_files = len(glob(json_dir + '/**/*.json', recursive=True))
     print('Finished: [%d/%d] %s -> %s (%.2f sec)' % (
         i_files, n_kml_files, kml_file, json_file, time() - t0))
@@ -415,23 +482,27 @@ def make_db(ksj_files, db_type, build_dir, dst_db_path, n_geohash=7):
     print('- geohash_length: %d' % n_geohash)
     print('- cpu_count: %d' % mp.cpu_count())
     json_dir = os.path.join(build_dir, 'json')
+    review_dir = os.path.join(build_dir, 'review')
     assert not os.path.isdir(json_dir)
+    assert not os.path.isdir(review_dir)
     os.makedirs(json_dir)
+    os.makedirs(review_dir)
     mp_args = [
-        (kml_file, len(kml_files), n_geohash, json_dir)
+        (kml_file, len(kml_files), n_geohash, json_dir, review_dir)
         for kml_file in kml_files
     ]
     pool = mp.Pool()
     pool.map(make_json, mp_args)
+    review_json_files(review_dir, os.path.join(json_dir, 'reviewed.json'))
     json_files = glob(json_dir + '/**/*.json', recursive=True)
     if db_type == 'json':
         print('Merging json files...')
-        merge_jsons(json_files, dst_db_path)
+        merge_json_files(json_files, dst_db_path)
     elif db_type == 'cdb':
         print('Making a cdb file from json files...')
         make_cdb(json_files, dst_db_path)
     elif db_type == 'fs':
-        print('Making a database in the form of file structures...')
+        print('Making a database in the form of file structure...')
         make_areacode_directories(json_files, dst_db_path)
     print('Finished: %.2f sec' % (time() - t0))
     return
