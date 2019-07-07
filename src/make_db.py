@@ -23,8 +23,8 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from .cdb import cdbmake
-from .geohash import decode_to_range
-from .geohash import get_longest_geohash, get_sub_geohashes
+from .geohash import BASE32, decode_to_range
+from .geohash import encode_to_geohashes, get_sub_geohashes
 from shapely.geometry import Point, Polygon
 
 ## XML Namespaces used in KML.
@@ -44,24 +44,42 @@ def get_pref_code(area_code):
     return area_code[:2]
 
 # get_area_code():
-def get_area_code(kml_file):
-    return os.path.splitext(os.path.basename(kml_file))[0]
-
-# make_polygon()
-def make_polygon(lat_lng_range):
-    ((minlat, maxlat), (minlng, maxlng)) = lat_lng_range
-    return Polygon([
-        (minlat, minlng),
-        (minlat, maxlng),
-        (maxlat, maxlng),
-        (maxlat, minlng),
-        (minlat, minlng)
-    ])
+def get_area_code(fpath):
+    basename = os.path.basename(fpath)
+    return basename.split('-')[0]
 
 # make_point()
 def make_point(lat_lng_range):
     ((minlat, maxlat), (minlng, maxlng)) = lat_lng_range
     return Point((minlat + maxlat) / 2, (maxlat + maxlng) / 2)
+
+# make_polygon(): kml_file -> polygon
+def make_polygon(kml_file):
+    def parse_coords_lines(lines):
+        points = []
+        for line in lines.splitlines():
+            s = line.strip()
+            if 0 < len(s):
+                (lng, lat) = [float(v) for v in s.split(',')]
+                points.append((lat, lng))
+        return points
+    tree = ET.parse(kml_file)
+    root = tree.getroot()
+    kml_doc = root.find('kml:Document', KML_NS)
+    placemark = kml_doc.find('kml:Placemark', KML_NS)
+    kml_polygon = placemark.find('kml:Polygon', KML_NS)
+    # outerBoundary (exterios)
+    bounds = kml_polygon.find('kml:outerBoundaryIs', KML_NS)
+    ring = bounds.find('kml:LinearRing', KML_NS)
+    coords = ring.find('kml:coordinates', KML_NS)
+    outer_points = parse_coords_lines(coords.text)
+    # innerBoundary (interior)
+    inner_points = []
+    for bounds in kml_polygon.findall('kml:innerBoundaryIs', KML_NS):
+        ring = bounds.find('kml:LinearRing', KML_NS)
+        coords = ring.find('kml:coordinates', KML_NS)
+        inner_points.append(parse_coords_lines(coords.text))
+    return Polygon(outer_points, inner_points)
 
 # make_polygons(): kml_file -> [(polygon, lat_lng_range),...]
 def make_polygons(kml_file):
@@ -107,6 +125,17 @@ def make_polygons(kml_file):
 #   find the nearest polygon to geohash area
 #   from polygons defined in kml_files.
 def find_nearest_polygon(geohash, kml_files):
+    # make_polygon()
+    def make_polygon(lat_lng_range):
+        ((minlat, maxlat), (minlng, maxlng)) = lat_lng_range
+        return Polygon([
+            (minlat, minlng),
+            (minlat, maxlng),
+            (maxlat, maxlng),
+            (maxlat, minlng),
+            (minlat, minlng)
+        ])
+
     assert 0 < len(kml_files)
     lat_lng_range = decode_to_range(geohash)
     polygon0 = make_polygon(lat_lng_range)
@@ -134,38 +163,37 @@ def make_polygon_from_ext_ints(exterior_kml_file, interior_kml_files):
         interior_points.append(polygon1.exterior.coords)
     return Polygon(polygon0.exterior.coords, interior_points)
 
-# make_kml_file(): [polygon] -> kml_file
-def make_kml_file(polygons, title, dst_file):
+# make_kml_file(): polygon -> kml_file
+def make_kml_file(polygon, title, dst_file):
     f = open(dst_file, 'w')
     f.write('<?xml version="1.0" encoding="utf-8" standalone="no"?>\n')
     f.write('<kml xmlns="http://www.opengis.net/kml/2.2">\n')
     f.write('<Document>\n')
     f.write('<name>%s</name>\n' % (title))
-    for (i, polygon) in enumerate(polygons):
-        f.write('<Placemark id="%d">\n' % (i+1))
-        f.write('<name>%d</name>\n' % (i+1))
-        f.write('<Polygon>\n')
-        # outerBoundary (exterior)
-        f.write('<outerBoundaryIs>\n')
+    f.write('<Placemark>\n')
+    f.write('<name>%s</name>\n' % (title))
+    f.write('<Polygon>\n')
+    # outerBoundary (exterior)
+    f.write('<outerBoundaryIs>\n')
+    f.write('<LinearRing>\n')
+    f.write('<coordinates>\n')
+    for (lat, lng) in polygon.exterior.coords:
+        f.write(' %s,%s\n' % (lng, lat))
+    f.write('</coordinates>\n')
+    f.write('</LinearRing>\n')
+    f.write('</outerBoundaryIs>\n')
+    # innerBoundary (interior)
+    for interior in polygon.interiors:
+        f.write('<innerBoundaryIs>\n')
         f.write('<LinearRing>\n')
         f.write('<coordinates>\n')
-        for (lat, lng) in polygon.exterior.coords:
+        for (lat, lng) in interior.coords:
             f.write(' %s,%s\n' % (lng, lat))
         f.write('</coordinates>\n')
         f.write('</LinearRing>\n')
-        f.write('</outerBoundaryIs>\n')
-        # innerBoundary (interior)
-        for interior in polygon.interiors:
-            f.write('<innerBoundaryIs>\n')
-            f.write('<LinearRing>\n')
-            f.write('<coordinates>\n')
-            for (lat, lng) in interior.coords:
-                f.write(' %s,%s\n' % (lng, lat))
-            f.write('</coordinates>\n')
-            f.write('</LinearRing>\n')
-            f.write('</innerBoundaryIs>\n')
-        f.write('</Polygon>\n')
-        f.write('</Placemark>\n')
+        f.write('</innerBoundaryIs>\n')
+    f.write('</Polygon>\n')
+    f.write('</Placemark>\n')
     f.write('</Document>\n')
     f.write('</kml>\n')
     f.close()
@@ -246,7 +274,7 @@ def make_curve_files(ksj_root, get_curve_fpath):
         fpath = get_curve_fpath(curve_id)
         if not os.path.isdir(os.path.dirname(fpath)):
             os.makedirs(os.path.dirname(fpath))
-        make_kml_file([polygon], curve_id, fpath)
+        make_kml_file(polygon, curve_id, fpath)
     return
 
 # make_areacode2curvefiles():
@@ -271,9 +299,11 @@ def make_areacode2curvefiles(ksj_root, get_curve_fpath):
     return areacode2curvefiles
 
 # make_kml_files():
-# dst_dir: 'kml/' - contains KML files which define
-#          polygons of administrative boundaries.
-def make_kml_files(ksj_file, dst_dir):
+# output:
+# * kml/: contains KML files which define
+#         polygons of administrative boundaries.
+# * kml-index/: TODO
+def make_kml_files(ksj_file, kml_dir, kml_index_dir):
     # tmpdir: 'tmp/' - contains KML files which define
     #          polygons of administrative boundary fragments
     #          (Curve objects in KSJ).
@@ -283,7 +313,7 @@ def make_kml_files(ksj_file, dst_dir):
     #     even on machines that don't have enough memory.
     #     e.g. N03-18_180101.xml: 500MB
     #          contains administrative areas of whole of Japan.
-    tmp_dir = os.path.join(dst_dir, 'tmp')
+    tmp_dir = os.path.join(kml_dir, 'tmp')
     if os.path.isdir(tmp_dir):
         shutil.rmtree(tmp_dir)
     # get_curve_fpath():
@@ -303,24 +333,39 @@ def make_kml_files(ksj_file, dst_dir):
     # ksj_root -> {area_code: [(int_curve_file, ext_curve_files), ...]}
     areacode2curvefiles = make_areacode2curvefiles(
         ksj_root, get_curve_fpath)
-    kml_files = []
+    n_index_files = 0
     for (area_code, curve_files) in areacode2curvefiles.items():
-        polygons = []
-        # curve_file -> [polygon...]
-        for (exterior_curve_file, interior_curve_files) in curve_files:
-            polygon = make_polygon_from_ext_ints(
-                exterior_curve_file, interior_curve_files)
-            polygons.append(polygon)
-        # kml/: [polygon...] -> .kml
-        pref_dir = os.path.join(dst_dir, get_pref_code(area_code))
+        pref_dir = os.path.join(kml_dir, get_pref_code(area_code))
         if not os.path.isdir(pref_dir):
             os.makedirs(pref_dir)
-        kml_file = os.path.join(pref_dir, area_code + '.kml')
-        make_kml_file(polygons, area_code, kml_file)
-        kml_files.append(kml_file)
-        print('Finished: writing %s' % kml_file)
+        for (i, (exterior_curve_file, interior_curve_files)) in enumerate(curve_files):
+            # curve_file -> polygon
+            polygon = make_polygon_from_ext_ints(
+                exterior_curve_file, interior_curve_files)
+            # polygon -> .kml
+            kml_file = os.path.join(pref_dir,
+                '%s-%02d.kml' % (area_code, i + 1))
+            make_kml_file(polygon, area_code, kml_file)
+            # update kml-index.
+            LENGTH = 4  # TODO: parameter
+            geohashes = encode_to_geohashes(polygon.bounds, length=LENGTH)
+            for geohash in geohashes:
+                fpath = os.path.join(
+                    kml_index_dir,
+                    os.path.sep.join(geohash) + '.txt')
+                if not os.path.isdir(os.path.dirname(fpath)):
+                    os.makedirs(os.path.dirname(fpath))
+                if not os.path.isfile(fpath):
+                    with open(fpath, 'w') as fp:
+                        fp.write(geohash + '\n')
+                        fp.write(kml_file + '\n')
+                    n_index_files += 1
+                else:
+                    with open(fpath, 'a') as fp:
+                        fp.write(kml_file + '\n')
+        print('Finished: writing kml files for area_code=%s)' % area_code)
     shutil.rmtree(tmp_dir)
-    return kml_files
+    return n_index_files
 
 # make_areacode_directories()
 def make_areacode_directories(json_files, areacode_dir):
@@ -346,36 +391,6 @@ def make_areacode_directories(json_files, areacode_dir):
             geohash2areacode = json.load(fp)
             for (geohash, area_code) in geohash2areacode.items():
                 write_entry(geohash, area_code)
-    return
-
-# review_json_files():
-def review_json_files(review_dir, dst_json):
-    with open(dst_json, 'w') as fdst:
-        fdst.write('{')
-        isFirstItem = True
-        for review_file in os.listdir(review_dir):
-            geohash = os.path.basename(review_file)
-            fpath = os.path.join(review_dir, review_file)
-            with open(fpath, 'r') as fsrc:
-                kml_files = [
-                    line for line in fsrc.read().splitlines()
-                    if line.strip() != ''
-                ]
-                area_code = None
-                if len(kml_files) < 1:
-                    continue
-                elif len(kml_files) == 1:
-                    area_code = get_area_code(kml_files[0])
-                else:
-                    kml_file = find_nearest_polygon(geohash, kml_files)
-                    area_code = get_area_code(kml_file)
-                assert(area_code is not None)
-                if isFirstItem:
-                    fdst.write('"%s": "%s"' % (geohash, area_code))
-                    isFirstItem = False
-                else:
-                    fdst.write(',"%s": "%s"' % (geohash, area_code))
-        fdst.write('}')
     return
 
 # merge_json_files():
@@ -406,94 +421,98 @@ def make_cdb(json_files, cdb_file):
 
 # make_json():
 def make_json(args): 
-    (kml_file, n_kml_files, n_geohash, json_dir, review_dir) = args
-    area_code = get_area_code(kml_file)
-    # geohashes whose area code is $area_code.
-    geohashes = []
-    # geohashes that may contain more than two area codes,
-    # one of them is $area_code.
-    geohashes_to_be_reviewed = {}
-    def add_to_review(geohash):
-        if geohash in geohashes_to_be_reviewed:
-            geohashes_to_be_reviewed[geohash].add(kml_file)
-        else:
-            geohashes_to_be_reviewed[geohash] = {kml_file}  # set
-    #
-    def doit(geohash, polygon):
+    (geohash_char, kml_index_dir, n_index_files,
+        n_geohash, json_dir) = args
+    # make_polygon1()
+    def make_polygon1(lat_lng_range):
+        ((minlat, maxlat), (minlng, maxlng)) = lat_lng_range
+        return Polygon([
+            (minlat, minlng),
+            (minlat, maxlng),
+            (maxlat, maxlng),
+            (maxlat, minlng),
+            (minlat, minlng)
+        ])
+
+    ##
+    def doit(geohash, polygon, area_code, geohash2areacode):
         for (geohash1, range1) in get_sub_geohashes(geohash):
-            polygon1 = make_polygon(range1)
+            polygon1 = make_polygon1(range1)
             if polygon.intersects(polygon1):
                 if polygon.contains(polygon1):
-                    geohashes.append(geohash1)
+                    geohash2areacode[geohash1] = area_code
                 elif len(geohash1) < n_geohash:
-                    doit(geohash1, polygon)
+                    doit(geohash1, polygon, area_code, geohash2areacode)
                 else:
-                    # TODO: this makes process slow...
-                    add_to_review(geohash1)
+                    # TODO; get nearst
+                    pass
             else:
                 # polygon1 is outside of polygon.
                 pass    # nop
         return
     #
-    t0 = time()
-    for (polygon, lat_lng_range) in make_polygons(kml_file):
-        geohash = get_longest_geohash(lat_lng_range, n_geohash)
-        if len(geohash) < n_geohash:
-            doit(geohash, polygon)
-        else:
-            add_to_review(geohash)
-    # write json files:
-    pref_dir = os.path.join(json_dir, get_pref_code(area_code))
-    if not os.path.isdir(pref_dir):
-        os.makedirs(pref_dir)
-    json_file = os.path.join(pref_dir, area_code + '.json')
-    geohash2areacode = {geohash: area_code for geohash in geohashes}
-    with open(json_file, 'w') as fp:
-        json.dump(geohash2areacode, fp, indent=None)
-    # write files to be reviewed:
-    for (geohash1, kml_files1) in geohashes_to_be_reviewed.items():
-        # write file: ${review_dir}/${geohash1}
-        review_file = os.path.join(review_dir, geohash1)
-        with open(review_file, 'a') as fp:
-            for kml_file1 in kml_files1:
-                fp.write(kml_file1 + '\n')
-    i_files = len(glob(json_dir + '/**/*.json', recursive=True))
-    print('Finished: [%d/%d] %s -> %s (%.2f sec)' % (
-        i_files, n_kml_files, kml_file, json_file, time() - t0))
+    for (root, dirs, files) in os.walk(kml_index_dir):
+        for fname in files:
+            if fname != geohash_char + '.txt':
+                continue
+            geohash = ''
+            polygons = []
+            index_file = os.path.join(root, fname)
+            with open(index_file, 'r') as fp:
+                geohash = fp.readline().strip()
+                for line in fp.readlines():
+                    line = line.strip()
+                    polygon = make_polygon(line)
+                    area_code = get_area_code(line)
+                    polygons.append((polygon, area_code))
+            geohash2areacode = {}
+            for (polygon, area_code) in polygons:
+                doit(geohash, polygon, area_code, geohash2areacode)
+            json_file = os.path.join(json_dir,
+                os.path.sep.join(geohash) + '.json')
+            if not os.path.isdir(os.path.dirname(json_file)):
+                os.makedirs(os.path.dirname(json_file))
+            if 0 < len(geohash2areacode):
+                with open(json_file, 'w') as fp:
+                    json.dump(geohash2areacode, fp, indent=None)
+            # TODO
+            # i_files = len(glob(json_dir + '/**/*.json', recursive=True))
+            # print('Finished: [%d/%d] %s -> %s (%.2f sec)' % (
+            #     i_files, n_kml_files, kml_file, json_file, time() - t0))
     return
 
 ####
 
 # make_db():
 def make_db(ksj_files, db_type, build_dir, dst_db_path, n_geohash=7):
-    t0 = time()
-    # ${build_dir}/kml
-    kml_dir = os.path.join(build_dir, 'kml')
-    kml_files = []
-    for ksj_file in ksj_files:
-        # parse
-        print('reading: %s...' % ksj_file)
-        kml_files += make_kml_files(ksj_file, kml_dir)
-    # ${build_dir}/geohash
     print('start creating database.')
     print('- ksj_files: %s' % ','.join(ksj_files))
     print('- build_dir: %s' % build_dir)
     print('- db_type: %s' % db_type)
     print('- geohash_length: %d' % n_geohash)
     print('- cpu_count: %d' % mp.cpu_count())
+    t0 = time()
+    # ${build_dir}/kml
+    kml_dir = os.path.join(build_dir, 'kml')
+    kml_index_dir = os.path.join(build_dir, 'kml-index')
+    assert not os.path.isdir(kml_dir)
+    assert not os.path.isdir(kml_index_dir)
+    os.makedirs(kml_dir)
+    os.makedirs(kml_index_dir)
+    n_index_files = 0
+    for ksj_file in ksj_files:
+        # parse
+        print('reading: %s...' % ksj_file)
+        n_index_files += make_kml_files(ksj_file, kml_dir, kml_index_dir)
+    # ${build_dir}/geohash
     json_dir = os.path.join(build_dir, 'json')
-    review_dir = os.path.join(build_dir, 'review')
     assert not os.path.isdir(json_dir)
-    assert not os.path.isdir(review_dir)
     os.makedirs(json_dir)
-    os.makedirs(review_dir)
     mp_args = [
-        (kml_file, len(kml_files), n_geohash, json_dir, review_dir)
-        for kml_file in kml_files
-    ]
+        (char, kml_index_dir, n_index_files, n_geohash, json_dir)
+        for char in BASE32]
     pool = mp.Pool()
     pool.map(make_json, mp_args)
-    review_json_files(review_dir, os.path.join(json_dir, 'reviewed.json'))
     json_files = glob(json_dir + '/**/*.json', recursive=True)
     if db_type == 'json':
         print('Merging json files...')

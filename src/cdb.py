@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-# pycdb.py - Python implementation of cdb and tcdb
+# pycdb.py - Python implementation of cdb
 # Original Version:
-# https://github.com/euske/pytcdb
+#  https://github.com/euske/pytcdb
+#  by Yusuke Shinyama
+#  * public domain *
+#
 
 import sys
 import os
@@ -24,7 +27,7 @@ class CDBWriter(object):
         self._fp = open(self.fntmp, 'wb')
         self._pos = 2048   # sizeof((h,p))*256
         self._size = 2048
-        self._bucket = [ array('I') for _ in range(256) ]
+        self._bucket = [array('I') for _ in range(256)]
         return
 
     # add(key, val)
@@ -59,7 +62,7 @@ class CDBWriter(object):
             for j in range(0, blen, 2):
                 (h,p) = (b1[j],b1[j+1])
                 i = ((h >> 8) % blen)*2
-                while a[i+1]:             # is cell[i] already occupied?
+                while a[i+1]: # is cell[i] already occupied?
                     i = (i+2) % len(a)
                 a[i] = h
                 a[i+1] = p
