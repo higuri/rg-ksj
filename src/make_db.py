@@ -48,6 +48,16 @@ def get_area_code(fpath):
     basename = os.path.basename(fpath)
     return basename.split('-')[0]
 
+# get_geohash()
+#   e.g. ./build/kml-index/x/p/e/9
+PAT = re.compile(r'.*kml-index/(.+)')
+def get_geohash(dirpath):
+    # too rough...\
+    m = PAT.match(dirpath)
+    if m is not None:
+        return ''.join(m.group(1).split('/'))
+    return ''
+
 # make_point()
 def make_point(lat_lng_range):
     ((minlat, maxlat), (minlng, maxlng)) = lat_lng_range
@@ -298,6 +308,48 @@ def make_areacode2curvefiles(ksj_root, get_curve_fpath):
             areacode2curvefiles[area_code].append(curve_file_set)
     return areacode2curvefiles
 
+# TODO: name
+# do_make_kml_files()
+def do_make_kml_files(args):
+    (area_code, curve_files, kml_dir, kml_index_dir) = args
+    pref_dir = os.path.join(kml_dir, get_pref_code(area_code))
+    try:
+        os.makedirs(pref_dir)
+    except OSError:
+        if os.path.isdir(pref_dir):
+            pass
+        else:
+            raise
+    for (i, (exterior_curve_file, interior_curve_files)) in (
+        enumerate(curve_files)):
+        # curve_file -> polygon
+        polygon = make_polygon_from_ext_ints(
+            exterior_curve_file, interior_curve_files)
+        # polygon -> .kml
+        kml_fname = '%s-%02d.kml' % (area_code, i + 1)
+        kml_fpath = os.path.join(pref_dir, kml_fname)
+        make_kml_file(polygon, area_code, kml_fpath)
+        # update kml-index.
+        LENGTH = 4  # TODO: parameter
+        geohashes = encode_to_geohashes(polygon.bounds, length=LENGTH)
+        for geohash in geohashes:
+            dpath = os.path.join(
+                kml_index_dir, os.path.sep.join(geohash))
+            try:
+                os.makedirs(dpath)
+            except OSError as e:
+                if os.path.isdir(dpath):
+                    pass
+                else:
+                    raise
+            fpath = os.path.join(dpath, kml_fname)
+            assert not os.path.isfile(fpath)
+            open(fpath, 'w').close()
+    # TODO: %d/%d
+    #   write out area_code files only for counting?
+    print('Finished: writing kml files for area_code=%s)' % area_code)
+    return
+
 # make_kml_files():
 # output:
 # * kml/: contains KML files which define
@@ -333,39 +385,16 @@ def make_kml_files(ksj_file, kml_dir, kml_index_dir):
     # ksj_root -> {area_code: [(int_curve_file, ext_curve_files), ...]}
     areacode2curvefiles = make_areacode2curvefiles(
         ksj_root, get_curve_fpath)
-    n_index_files = 0
-    for (area_code, curve_files) in areacode2curvefiles.items():
-        pref_dir = os.path.join(kml_dir, get_pref_code(area_code))
-        if not os.path.isdir(pref_dir):
-            os.makedirs(pref_dir)
-        for (i, (exterior_curve_file, interior_curve_files)) in enumerate(curve_files):
-            # curve_file -> polygon
-            polygon = make_polygon_from_ext_ints(
-                exterior_curve_file, interior_curve_files)
-            # polygon -> .kml
-            kml_file = os.path.join(pref_dir,
-                '%s-%02d.kml' % (area_code, i + 1))
-            make_kml_file(polygon, area_code, kml_file)
-            # update kml-index.
-            LENGTH = 4  # TODO: parameter
-            geohashes = encode_to_geohashes(polygon.bounds, length=LENGTH)
-            for geohash in geohashes:
-                fpath = os.path.join(
-                    kml_index_dir,
-                    os.path.sep.join(geohash) + '.txt')
-                if not os.path.isdir(os.path.dirname(fpath)):
-                    os.makedirs(os.path.dirname(fpath))
-                if not os.path.isfile(fpath):
-                    with open(fpath, 'w') as fp:
-                        fp.write(geohash + '\n')
-                        fp.write(kml_file + '\n')
-                    n_index_files += 1
-                else:
-                    with open(fpath, 'a') as fp:
-                        fp.write(kml_file + '\n')
-        print('Finished: writing kml files for area_code=%s)' % area_code)
+
+    ###
+    mp_args = [
+        (area_code, curve_files, kml_dir, kml_index_dir)
+        for (area_code, curve_files) in areacode2curvefiles.items()
+    ]
+    pool = mp.Pool()
+    pool.map(do_make_kml_files, mp_args)
     shutil.rmtree(tmp_dir)
-    return n_index_files
+    return
 
 # make_areacode_directories()
 def make_areacode_directories(json_files, areacode_dir):
@@ -421,8 +450,7 @@ def make_cdb(json_files, cdb_file):
 
 # make_json():
 def make_json(args): 
-    (geohash_char, kml_index_dir, n_index_files,
-        n_geohash, json_dir) = args
+    (geohash_char, kml_dir, kml_index_dir, n_index_dirs, n_geohash, json_dir) = args
     # make_polygon1()
     def make_polygon1(lat_lng_range):
         ((minlat, maxlat), (minlng, maxlng)) = lat_lng_range
@@ -452,33 +480,30 @@ def make_json(args):
         return
     #
     for (root, dirs, files) in os.walk(kml_index_dir):
+        if len(files) < 1 or not root.endswith(geohash_char):
+            continue
+        t0 = time()
+        geohash = get_geohash(root)
+        polygons = []
         for fname in files:
-            if fname != geohash_char + '.txt':
-                continue
-            geohash = ''
-            polygons = []
-            index_file = os.path.join(root, fname)
-            with open(index_file, 'r') as fp:
-                geohash = fp.readline().strip()
-                for line in fp.readlines():
-                    line = line.strip()
-                    polygon = make_polygon(line)
-                    area_code = get_area_code(line)
-                    polygons.append((polygon, area_code))
+            (area_code, _) = fname.split('-')
+            kml_file = os.path.join(
+                kml_dir, get_pref_code(area_code), fname)
+            polygon = make_polygon(kml_file)
+            polygons.append((polygon, area_code))
             geohash2areacode = {}
             for (polygon, area_code) in polygons:
                 doit(geohash, polygon, area_code, geohash2areacode)
-            json_file = os.path.join(json_dir,
-                os.path.sep.join(geohash) + '.json')
-            if not os.path.isdir(os.path.dirname(json_file)):
-                os.makedirs(os.path.dirname(json_file))
-            if 0 < len(geohash2areacode):
-                with open(json_file, 'w') as fp:
-                    json.dump(geohash2areacode, fp, indent=None)
-            # TODO
-            # i_files = len(glob(json_dir + '/**/*.json', recursive=True))
-            # print('Finished: [%d/%d] %s -> %s (%.2f sec)' % (
-            #     i_files, n_kml_files, kml_file, json_file, time() - t0))
+        json_file = os.path.join(json_dir,
+            os.path.sep.join(geohash) + '.json')
+        if not os.path.isdir(os.path.dirname(json_file)):
+            os.makedirs(os.path.dirname(json_file))
+        if 0 < len(geohash2areacode):
+            with open(json_file, 'w') as fp:
+                json.dump(geohash2areacode, fp, indent=None)
+        i_files = len(glob(json_dir + '/**/*.json', recursive=True))
+        print('Finished: [%d/%d] %s -> %s (%.2f sec)' % (
+            i_files, n_index_dirs, root, json_file, time() - t0))
     return
 
 ####
@@ -499,17 +524,20 @@ def make_db(ksj_files, db_type, build_dir, dst_db_path, n_geohash=7):
     assert not os.path.isdir(kml_index_dir)
     os.makedirs(kml_dir)
     os.makedirs(kml_index_dir)
-    n_index_files = 0
     for ksj_file in ksj_files:
         # parse
         print('reading: %s...' % ksj_file)
-        n_index_files += make_kml_files(ksj_file, kml_dir, kml_index_dir)
+        make_kml_files(ksj_file, kml_dir, kml_index_dir)
+    n_index_dirs = 0
+    for (_, _, files) in os.walk(kml_index_dir):
+        if 0 < len(files):
+            n_index_dirs += 1
     # ${build_dir}/geohash
     json_dir = os.path.join(build_dir, 'json')
     assert not os.path.isdir(json_dir)
     os.makedirs(json_dir)
     mp_args = [
-        (char, kml_index_dir, n_index_files, n_geohash, json_dir)
+        (char, kml_dir, kml_index_dir, n_index_dirs, n_geohash, json_dir)
         for char in BASE32]
     pool = mp.Pool()
     pool.map(make_json, mp_args)
@@ -525,11 +553,3 @@ def make_db(ksj_files, db_type, build_dir, dst_db_path, n_geohash=7):
         make_areacode_directories(json_files, dst_db_path)
     print('Finished: %.2f sec' % (time() - t0))
     return
-
-# main():
-def main(args):
-    make_db(args[0], args[1:])
-    return
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
