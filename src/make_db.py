@@ -476,14 +476,14 @@ def make_json(args):
                     pass
             else:
                 # polygon1 is outside of polygon.
-                pass    # nop
+                pass
         return
     #
     for (root, dirs, files) in os.walk(kml_index_dir):
         if len(files) < 1 or not root.endswith(geohash_char):
             continue
         t0 = time()
-        geohash = get_geohash(root)
+        #
         polygons = []
         for fname in files:
             (area_code, _) = fname.split('-')
@@ -491,9 +491,11 @@ def make_json(args):
                 kml_dir, get_pref_code(area_code), fname)
             polygon = make_polygon(kml_file)
             polygons.append((polygon, area_code))
-            geohash2areacode = {}
-            for (polygon, area_code) in polygons:
-                doit(geohash, polygon, area_code, geohash2areacode)
+        #
+        geohash = get_geohash(root)
+        geohash2areacode = {}
+        for (polygon, area_code) in polygons:
+            doit(geohash, polygon, area_code, geohash2areacode)
         json_file = os.path.join(json_dir,
             os.path.sep.join(geohash) + '.json')
         if not os.path.isdir(os.path.dirname(json_file)):
