@@ -463,17 +463,23 @@ def make_json(args):
         ])
 
     ##
-    def doit(geohash, polygon, area_code, geohash2areacode):
+    def doit(geohash, polygon, area_code,
+        geohash2areacode, geohash2candidates):
         for (geohash1, range1) in get_sub_geohashes(geohash):
             polygon1 = make_polygon1(range1)
             if polygon.intersects(polygon1):
                 if polygon.contains(polygon1):
                     geohash2areacode[geohash1] = area_code
                 elif len(geohash1) < n_geohash:
-                    doit(geohash1, polygon, area_code, geohash2areacode)
+                    doit(geohash1, polygon, area_code,
+                        geohash2areacode, geohash2candidates)
                 else:
-                    # TODO; get nearst
-                    pass
+                    if geohash1 in geohash2candidates:
+                        geohash2candidates[geohash1].append(
+                            (polygon, area_code))
+                    else:
+                        geohash2candidates[geohash1] = [
+                            (polygon, area_code)]
             else:
                 # polygon1 is outside of polygon.
                 pass
@@ -494,8 +500,25 @@ def make_json(args):
         #
         geohash = get_geohash(root)
         geohash2areacode = {}
+        geohash2candidates = {}
         for (polygon, area_code) in polygons:
-            doit(geohash, polygon, area_code, geohash2areacode)
+            doit(geohash, polygon, area_code,
+                geohash2areacode, geohash2candidates)
+        #
+        for (geohash, candidates) in geohash2candidates.items():
+            assert(0 < len(candidates))
+            if len(candidates) == 1:
+                (_, area_code) = candidates[0]
+                geohash2areacode[geohash] = area_code
+            else:
+                polygon0 = make_polygon1(decode_to_range(geohash))
+                best = None
+                for (polygon, area_code) in candidates:
+                    d = polygon0.distance(polygon)
+                    if best is None or d < best[0]:
+                        best = (d, area_code)
+                (_, area_code)
+                geohash2areacode[geohash] = area_code
         json_file = os.path.join(json_dir,
             os.path.sep.join(geohash) + '.json')
         if not os.path.isdir(os.path.dirname(json_file)):
