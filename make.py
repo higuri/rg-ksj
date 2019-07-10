@@ -15,9 +15,13 @@ from src.make_db import make_db
 src_dir = os.path.join('.', 'src')
 build_dir = os.path.join('.', 'build')
 dist_dir = os.path.join('.', 'dist')
-fs_db_name = 'area_code'
-json_db_name = 'area_code.json'
-cdb_name = 'area_code.cdb'
+
+geohash2areacode_dir = 'geohash2areacode'
+geohash2areacode_json = 'geohash2areacode.json'
+geohash2areacode_cdb = 'geohash2areacode.cdb'
+areacode2name_dir = 'areacode2name'
+areacode2name_cdb = 'areacode2name.cdb'
+areacode2name_json = 'areacode2name.json'
 
 # build():
 def build(ksj_files, db_type, n_geohash):
@@ -26,34 +30,40 @@ def build(ksj_files, db_type, n_geohash):
     clean()
     # build
     print('Ready.')
-    db_name = ''
-    if db_type == 'json':
-        db_name = json_db_name
-    elif db_type == 'cdb':
-        db_name = cdb_name
-    elif db_type == 'fs':
-        db_name = fs_db_name
-    else:
-        raise ValueError()
-    build_db_path = os.path.join(build_dir, db_name)
-    make_db(ksj_files, db_type, build_dir, build_db_path, n_geohash)
-    dist_db_path = os.path.join(dist_dir, db_name)
+    make_db(ksj_files, db_type, build_dir, n_geohash)
     # dist
     print('Making distributables...')
     os.makedirs(dist_dir)
-    # - database
-    shutil.move(build_db_path, dist_db_path)
-    # - scripts
     shutil.copyfile(
         os.path.join(src_dir, 'query_db.py'),
         os.path.join(dist_dir, 'query_db.py'))
     shutil.copyfile(
         os.path.join(src_dir, 'geohash.py'),
         os.path.join(dist_dir, 'geohash.py'))
-    if db_type == 'cdb':
+    if db_type == 'json':
+        shutil.move(
+            os.path.join(build_dir, geohash2areacode_json),
+            os.path.join(dist_dir, geohash2areacode_json))
+        shutil.move(
+            os.path.join(build_dir, areacode2name_json),
+            os.path.join(dist_dir, areacode2name_json))
+    elif db_type == 'cdb':
         shutil.copyfile(
             os.path.join(src_dir, 'cdb.py'),
             os.path.join(dist_dir, 'cdb.py'))
+        shutil.move(
+            os.path.join(build_dir, geohash2areacode_cdb),
+            os.path.join(dist_dir, geohash2areacode_cdb))
+        shutil.move(
+            os.path.join(build_dir, areacode2name_cdb),
+            os.path.join(dist_dir, areacode2name_cdb))
+    elif db_type == 'fs':
+        shutil.move(
+            os.path.join(build_dir, geohash2areacode_dir),
+            os.path.join(dist_dir, geohash2areacode_dir))
+        shutil.move(
+            os.path.join(build_dir, areacode2name_dir),
+            os.path.join(dist_dir, areacode2name_dir))
     return
 
 # clean():
@@ -112,16 +122,20 @@ def main(argv):
         build(args, db_type, n_geohash)
     elif cmd == 'test':
         # TODO: add db spec(n_chars)
-        db_path = None
-        if os.path.isfile(os.path.join(dist_dir, json_db_name)):
+        gh2ac = None
+        ac2an = None
+        if os.path.isfile(os.path.join(dist_dir, geohash2areacode_json)):
             from dist.query_db import get_area_from_json_db as get_area
-            db_path = os.path.join(dist_dir, json_db_name)
-        elif os.path.isfile(os.path.join(dist_dir, cdb_name)):
+            gh2ac = os.path.join(dist_dir, geohash2areacode_json)
+            ac2an = os.path.join(dist_dir, areacode2name_json)
+        elif os.path.isfile(os.path.join(dist_dir, geohash2areacode_cdb)):
             from dist.query_db import get_area_from_cdb as get_area
-            db_path = os.path.join(dist_dir, cdb_name)
-        elif os.path.isdir(os.path.join(dist_dir, fs_db_name)):
+            gh2ac = os.path.join(dist_dir, geohash2areacode_cdb)
+            ac2an = os.path.join(dist_dir, areacode2name_cdb)
+        elif os.path.isdir(os.path.join(dist_dir, geohash2areacode_dir)):
             from dist.query_db import get_area_from_fs_db as get_area
-            db_path = os.path.join(dist_dir, fs_db_name)
+            gh2ac = os.path.join(dist_dir, geohash2areacode_dir)
+            ac2an = os.path.join(dist_dir, areacode2name_dir)
         else:
             print('No database found. Run `build` first.')
             return -1
@@ -129,7 +143,7 @@ def main(argv):
             print(help(cmd))
             return -1
         (lat, lng) = [float(v) for v in args[:2]]
-        print(get_area(lat, lng, db_path))
+        print(get_area(lat, lng, gh2ac, ac2an))
     elif cmd == 'clean':
         clean()
     else:   # including cmd == 'help'.

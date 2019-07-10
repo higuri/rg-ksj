@@ -32,8 +32,10 @@ class CDBWriter(object):
 
     # add(key, val)
     def add(self, k, v):
-        assert isinstance(k, bytes)
-        assert isinstance(v, bytes)
+        assert isinstance(k, str)
+        assert isinstance(v, str)
+        k = k.encode()
+        v = v.encode()
         (klen, vlen) = (len(k), len(v))
         self._fp.seek(self._pos)
         self._fp.write(pack('<II', klen, vlen))
@@ -87,7 +89,8 @@ def cdbmake(cdbname):
 
 # cdbget(cdbname, key)
 def cdbget(cdbname, k):
-    assert isinstance(k, bytes)
+    assert isinstance(k, str)
+    k = k.encode()
     with open(cdbname, 'rb') as fp:
         h = cdbhash(k)
         fp.seek((h % 256) * 8)
@@ -105,7 +108,8 @@ def cdbget(cdbname, k):
                 if k1 == k:
                     # return the first match.
                     v1 = fp.read(vlen)
-                    return v1
+                    assert isinstance(v1, bytes)
+                    return v1.decode()
         raise KeyError
 
 # test()
@@ -117,13 +121,13 @@ def test():
         'key03': 'val03'
     }
     for (k, v) in d.items():
-        cdb_writer.add(k.encode(), v.encode())
+        cdb_writer.add(k, v)
     cdb_writer.finish()
-    assert cdbget('mycdb.cdb', 'key01'.encode()) == b'val01'
-    assert cdbget('mycdb.cdb', 'key02'.encode()) == b'val02'
-    assert cdbget('mycdb.cdb', 'key03'.encode()) == b'val03'
+    assert cdbget('mycdb.cdb', 'key01') == 'val01'
+    assert cdbget('mycdb.cdb', 'key02') == 'val02'
+    assert cdbget('mycdb.cdb', 'key03') == 'val03'
     try:
-        cdbget('mycdb.cdb', 'key99'.encode())
+        cdbget('mycdb.cdb', 'key99')
         assert False
     except KeyError:
         pass

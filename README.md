@@ -8,9 +8,7 @@ Reverse Geocoding Database for Japan using KSJ (国土数値情報).
   - managed
     - back: cloud NoSQL DB with JSON support.
     - front: same as unmanaged.
-- area code -> area name 
-- debug
-  43.05753 142.65566
+- argparse
 - write README
   - how to build
   - KSJ link, license
@@ -28,3 +26,6 @@ Reverse Geocoding Database for Japan using KSJ (国土数値情報).
       - x need cdb support to implement (query).
     - json
       - o managed server.
+- [OK] speed-up (stop using in-review) [geohash-utils]
+- [OK] debug 43.05753 142.65566
+- [OK] area code -> area name 

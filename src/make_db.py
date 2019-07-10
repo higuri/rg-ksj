@@ -239,30 +239,33 @@ def make_sfid2cvids(etree_root):
 # make_areacode2sfids():
 def make_areacode2sfids(ksj_root):
     areacode2sfids = {}
-    areacode2areaname = {}
+    areacode2names = {}
     for boundary in ksj_root.findall('ksj:AdministrativeBoundary', KSJ_NS):
         bounds = boundary.find('ksj:bounds', KSJ_NS)
         boundsRef = bounds.get('{%s}href' % KSJ_NS['xlink'])
         surface_id = boundsRef.replace('#', '')
-        e0 = boundary.find('ksj:administrativeAreaCode', KSJ_NS)
-        e1 = boundary.find('ksj:prefectureName', KSJ_NS)
-        e2 = boundary.find('ksj:cityName', KSJ_NS)
-        if (e0 is None or e1 is None or e2 is None):
-            continue
-        if (e0.text is None or e1.text is None or e2.text is None):
+        elems = [
+            boundary.find('ksj:administrativeAreaCode', KSJ_NS),
+            boundary.find('ksj:prefectureName', KSJ_NS),
+            boundary.find('ksj:subPrefectureName', KSJ_NS),
+            boundary.find('ksj:countyName', KSJ_NS),
+            boundary.find('ksj:cityName', KSJ_NS)]
+        contents = [''] * len(elems)
+        for (i, elem) in enumerate(elems):
+            if elem is not None and elem.text is not None:
+                contents[i] = elem.text.strip()
+        area_code = contents[0]
+        if area_code == '':
             # area code of '所属未定地' is None.
             continue
-        area_code = e0.text.strip()
-        pref_name = e1.text.strip()
-        city_name = e2.text.strip()
         # areacode2sfids
         if area_code not in areacode2sfids:
             areacode2sfids[area_code] = []
         areacode2sfids[area_code].append(surface_id)
-        # areacode2areaname
-        if area_code not in areacode2areaname:
-            areacode2areaname[area_code] = '%s,%s' % (pref_name, city_name)
-    return (areacode2sfids, areacode2areaname)
+        # areacode2names
+        if area_code not in areacode2names:
+            areacode2names[area_code] = contents[1:]
+    return (areacode2sfids, areacode2names)
 
 # make_curve_files():
 def make_curve_files(ksj_root, get_curve_fpath):
@@ -290,7 +293,7 @@ def make_curve_files(ksj_root, get_curve_fpath):
 # make_areacode2curvefiles():
 def make_areacode2curvefiles(ksj_root, get_curve_fpath):
     sfid2cvids = make_sfid2cvids(ksj_root)
-    (areacode2sfids, areacode2areaname) = make_areacode2sfids(ksj_root)
+    (areacode2sfids, areacode2names) = make_areacode2sfids(ksj_root)
     # areacode2curvefiles
     # - key: area_code
     # - val: (interior_curve_id, [exterior_curve_id, ...]), ...
@@ -306,7 +309,7 @@ def make_areacode2curvefiles(ksj_root, get_curve_fpath):
                 [get_curve_fpath(int_cvid) for int_cvid in int_cvids]
             )
             areacode2curvefiles[area_code].append(curve_file_set)
-    return areacode2curvefiles
+    return (areacode2curvefiles, areacode2names)
 
 # TODO: name
 # do_make_kml_files()
@@ -383,10 +386,9 @@ def make_kml_files(ksj_file, kml_dir, kml_index_dir):
     # ksj_root -> curve files (.kml)
     make_curve_files(ksj_root, get_curve_fpath)
     # ksj_root -> {area_code: [(int_curve_file, ext_curve_files), ...]}
-    areacode2curvefiles = make_areacode2curvefiles(
-        ksj_root, get_curve_fpath)
-
-    ###
+    (areacode2curvefiles, areacode2names) = \
+        make_areacode2curvefiles(ksj_root, get_curve_fpath)
+    # 
     mp_args = [
         (area_code, curve_files, kml_dir, kml_index_dir)
         for (area_code, curve_files) in areacode2curvefiles.items()
@@ -394,7 +396,7 @@ def make_kml_files(ksj_file, kml_dir, kml_index_dir):
     pool = mp.Pool()
     pool.map(do_make_kml_files, mp_args)
     shutil.rmtree(tmp_dir)
-    return
+    return areacode2names
 
 # make_areacode_directories()
 def make_areacode_directories(json_files, areacode_dir):
@@ -444,7 +446,34 @@ def make_cdb(json_files, cdb_file):
     for (i, src) in enumerate(json_files):
         with open(src, 'r') as fsrc:
             for (k, v) in json.load(fsrc).items():
-                cdb_writer.add(k.encode(), v.encode())
+                cdb_writer.add(k, v)
+    cdb_writer.finish()
+    return
+
+# area_names_to_string():
+def area_names_to_string(area_names):
+    return ','.join([v for v in area_names if v != ''])
+
+# make_areacode2name_json():
+def make_areacode2name_json(areacode2names, json_file):
+    ac2an = {}
+    for (ac, names) in areacode2names.items():
+        ac2an[ac] = area_names_to_string(names)
+    with open(json_file, 'w') as fp:
+        json.dump(ac2an, fp, indent=None)
+    return
+
+# make_areacode2name_directories():
+def make_areacode2name_directories(areacode2names, dir_path):
+    # TODO
+    return
+
+# make_areacode2name_cdb():
+def make_areacode2name_cdb(areacode2names, cdb_file):
+    cdb_writer = cdbmake(cdb_file)
+    for (area_code, area_names) in areacode2names.items():
+        cdb_writer.add(
+            area_code, area_names_to_string(area_names))
     cdb_writer.finish()
     return
 
@@ -534,7 +563,7 @@ def make_json(args):
 ####
 
 # make_db():
-def make_db(ksj_files, db_type, build_dir, dst_db_path, n_geohash=7):
+def make_db(ksj_files, db_type, build_dir, n_geohash=7):
     print('start creating database.')
     print('- ksj_files: %s' % ','.join(ksj_files))
     print('- build_dir: %s' % build_dir)
@@ -542,9 +571,10 @@ def make_db(ksj_files, db_type, build_dir, dst_db_path, n_geohash=7):
     print('- geohash_length: %d' % n_geohash)
     print('- cpu_count: %d' % mp.cpu_count())
     t0 = time()
-    # ${build_dir}/kml
+    # build_dir/kml
     kml_dir = os.path.join(build_dir, 'kml')
     kml_index_dir = os.path.join(build_dir, 'kml-index')
+    areacode2names = {}
     assert not os.path.isdir(kml_dir)
     assert not os.path.isdir(kml_index_dir)
     os.makedirs(kml_dir)
@@ -552,12 +582,12 @@ def make_db(ksj_files, db_type, build_dir, dst_db_path, n_geohash=7):
     for ksj_file in ksj_files:
         # parse
         print('reading: %s...' % ksj_file)
-        make_kml_files(ksj_file, kml_dir, kml_index_dir)
+        ac2an = make_kml_files(ksj_file, kml_dir, kml_index_dir)
+        areacode2names.update(ac2an)
     n_index_dirs = 0
     for (_, _, files) in os.walk(kml_index_dir):
-        if 0 < len(files):
-            n_index_dirs += 1
-    # ${build_dir}/geohash
+        n_index_dirs += 1 if 0 < len(files) else 0
+    # build_dir/geohash
     json_dir = os.path.join(build_dir, 'json')
     assert not os.path.isdir(json_dir)
     os.makedirs(json_dir)
@@ -569,12 +599,21 @@ def make_db(ksj_files, db_type, build_dir, dst_db_path, n_geohash=7):
     json_files = glob(json_dir + '/**/*.json', recursive=True)
     if db_type == 'json':
         print('Merging json files...')
-        merge_json_files(json_files, dst_db_path)
+        gh2ac = os.path.join(build_dir, 'geohash2areacode.json')
+        merge_json_files(json_files, gh2ac)
+        ac2an = os.path.join(build_dir, 'areacode2name.json')
+        make_areacode2name_json(areacode2names, ac2an)
     elif db_type == 'cdb':
         print('Making a cdb file from json files...')
-        make_cdb(json_files, dst_db_path)
+        gh2ac = os.path.join(build_dir, 'geohash2areacode.cdb')
+        make_cdb(json_files, gh2ac)
+        ac2an = os.path.join(build_dir, 'areacode2name.cdb')
+        make_areacode2name_cdb(areacode2names, ac2an)
     elif db_type == 'fs':
         print('Making a database in the form of file structure...')
-        make_areacode_directories(json_files, dst_db_path)
+        gh2ac = os.path.join(build_dir, 'geohash2areacode')
+        make_areacode_directories(json_files, gh2ac)
+        ac2an = os.path.join(build_dir, 'areacode2name')
+        make_areacode2name_directories(areacode2names, ac2an)
     print('Finished: %.2f sec' % (time() - t0))
     return
