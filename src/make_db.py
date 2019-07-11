@@ -452,7 +452,7 @@ def make_cdb(json_files, cdb_file):
 
 # area_names_to_string():
 def area_names_to_string(area_names):
-    return ','.join([v for v in area_names if v != ''])
+    return ' '.join([v for v in area_names if v != ''])
 
 # make_areacode2name_json():
 def make_areacode2name_json(areacode2names, json_file):
