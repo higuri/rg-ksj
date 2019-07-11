@@ -1,4 +1,6 @@
 <?php
+// TODO
+header("Access-Control-Allow-Origin: *");
 // index.php
 use \Psr\Http\Message\ServerRequestInterface as Request;
 use \Psr\Http\Message\ResponseInterface as Response;
@@ -31,8 +33,8 @@ function get_area_from_cdb($lat, $lng, $db_file) {
     return "";
 }
 
-// http://example.com/35.12345+139.12345
-$app->get('/[{latlng}]', function ($request, $response, $args) {
+// http://example.com/api/v1/35.12345+139.12345
+$app->get('/api/v1/{latlng}', function ($request, $response, $args) {
     $result = array();
     if (isset($args['latlng'])) {
         // TODO: '+' -> ' ' ?
@@ -41,10 +43,11 @@ $app->get('/[{latlng}]', function ($request, $response, $args) {
             // TODO; check value.
             $lat = floatval($latlng[0]);
             $lng = floatval($latlng[1]);
-            $area_code = get_area_from_cdb($cdb_file, $lat, $lng);
+            // $area_code = get_area_from_cdb($cdb_file, $lat, $lng);
+            $area_code = '12345';
             $result['lat'] = $latlng[0];
             $result['lng'] = $latlng[1];
-            $result['area-code'] = $area_code;
+            $result['area_code'] = $area_code;
         }
     }
     return $response->withJson($result, 200);
