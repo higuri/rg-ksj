@@ -51,7 +51,8 @@ class OsmMap {
       }
       this.popup
         .setLatLng(latlng)
-        .setContent(`${latlng.lat}, ${latlng.lng}: ${areaCode}`)
+        //.setContent(`${latlng.lat}, ${latlng.lng}: ${areaCode}`)
+        .setContent(`${areaCode}`)
         .openOn(this.map);
     });
     xhr.send(null);
