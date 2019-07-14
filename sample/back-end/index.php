@@ -50,10 +50,10 @@ $app->get('/api/v1/{latlng}', function ($request, $response, $args) {
             // TODO; check value.
             $lat = floatval($latlng[0]);
             $lng = floatval($latlng[1]);
-            $area_code = get_area_from_cdb($lat, $lng);
+            $area_name = get_area_from_cdb($lat, $lng);
             $result['lat'] = $latlng[0];
             $result['lng'] = $latlng[1];
-            $result['area_code'] = $area_code;
+            $result['area_name'] = $area_name;
         }
     }
     return $response->withJson($result, 200);

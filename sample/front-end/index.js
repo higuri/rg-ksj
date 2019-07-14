@@ -43,16 +43,18 @@ class OsmMap {
     xhr.open('GET', url, true);
     xhr.onload = (() => {
       const result = JSON.parse(xhr.responseText);
-      let areaCode = 'N/A';
+      let areaName = 'N/A';
       if (xhr.readyState == 4 && xhr.status == '200') {
-        areaCode = result.area_code;
+        if (result.area_name !== '') {
+          areaName = result.area_name;
+        }
       } else {
         console.error('error');
       }
       this.popup
         .setLatLng(latlng)
         //.setContent(`${latlng.lat}, ${latlng.lng}: ${areaCode}`)
-        .setContent(`${areaCode}`)
+        .setContent(`${areaName}`)
         .openOn(this.map);
     });
     xhr.send(null);
