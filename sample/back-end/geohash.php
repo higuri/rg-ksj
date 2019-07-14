@@ -5,6 +5,8 @@
 // Geohash:
 // https://en.wikipedia.org/wiki/Geohash
 
+// TODO: namespace
+
 $BASE32 = str_split("0123456789bcdefghjkmnpqrstuvwxyz");
 $BASE32_TO_DECIMAL = array_reduce(
     range(0, count($BASE32) - 1), function ($result, $i) use ($BASE32) {

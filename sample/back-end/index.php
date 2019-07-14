@@ -1,34 +1,41 @@
 <?php
+// index.php
+
 // TODO
 header("Access-Control-Allow-Origin: *");
-// index.php
+
 use \Psr\Http\Message\ServerRequestInterface as Request;
 use \Psr\Http\Message\ResponseInterface as Response;
 
 require __DIR__ . "/../vendor/autoload.php";
+require __DIR__ . "/cdb.php";
 require __DIR__ . "/geohash.php";
 
-$app = new \Slim\App;
-$cdb_file = __DIR__ . "/../lib/area_code.cdb";
+$GH2AC = __DIR__ . "/../lib/geohash2areacode.cdb";
+$AC2AN = __DIR__ . "/../lib/areacode2name.cdb";
 
-// cdb_get()
-function cdb_get($key) {
-    global $cdb_file;
-    $dbid = dba_open($cdb_file, "r", "cdb");
-    $val = dba_fetch($key, $dbid);
-    dba_close($dbid);
-    return $val === FALSE ? "" : $val;
-}
+$app = new \Slim\App;
 
 // get_area_from_cdb():
-function get_area_from_cdb($lat, $lng, $db_file) {
-    $hash1 = encode($lat, $lng, 7);
-    while (0 < count($hash1)) {
-        $val = cdb_get($db_file, $hash1);
-        if ($val !== "") {
-            return $val;
+function get_area_from_cdb($lat, $lng) {
+    global $GH2AC;
+    global $AC2AN;
+    $gh = encode($lat, $lng, 7);
+    $ac = null;
+    // gh2ac
+    while (0 < strlen($gh)) {
+        $ac = cdb_get($GH2AC, $gh);
+        if ($ac !== null) {
+            break;
         }
-        $hash1 = substr($hash1, 0, count($hash1) - 1);
+        $gh = substr($gh, 0, strlen($gh) - 1);
+    }
+    // ac2an
+    if ($ac !== null) {
+        $an = cdb_get($AC2AN, $ac);
+        if ($an !== null) {
+            return $an;
+        }
     }
     return "";
 }
@@ -43,8 +50,7 @@ $app->get('/api/v1/{latlng}', function ($request, $response, $args) {
             // TODO; check value.
             $lat = floatval($latlng[0]);
             $lng = floatval($latlng[1]);
-            // $area_code = get_area_from_cdb($cdb_file, $lat, $lng);
-            $area_code = '12345';
+            $area_code = get_area_from_cdb($lat, $lng);
             $result['lat'] = $latlng[0];
             $result['lng'] = $latlng[1];
             $result['area_code'] = $area_code;
@@ -53,4 +59,3 @@ $app->get('/api/v1/{latlng}', function ($request, $response, $args) {
     return $response->withJson($result, 200);
 });
 $app->run();
-
