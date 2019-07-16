@@ -1,5 +1,9 @@
 # rg-ksj
 Reverse Geocoding Database for Japan based on KSJ (国土数値情報).
+
+## Demo Page
+https://higuri.github.io/rg-ksj/index.html
+
 ## TODO
 - sample web page (for demo, test)
   - managed
