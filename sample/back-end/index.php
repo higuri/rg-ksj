@@ -40,7 +40,7 @@ function get_area_from_cdb($lat, $lng) {
     return "";
 }
 
-// http://example.com/api/v1/35.12345+139.12345
+// http://YOUR-DOMAIN/api/v1/35.12345+139.12345
 $app->get('/api/v1/{latlng}', function ($request, $response, $args) {
     $result = array();
     if (isset($args['latlng'])) {

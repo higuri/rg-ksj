@@ -3,7 +3,6 @@
 # Original Version:
 #  https://github.com/euske/pytcdb
 #  by Yusuke Shinyama
-#  * public domain *
 #
 
 import sys
@@ -94,11 +93,12 @@ def cdbget(cdbname, k):
     with open(cdbname, 'rb') as fp:
         h = cdbhash(k)
         fp.seek((h % 256) * 8)
+        # TODO: LL, II
         (pos_bucket, ncells) = unpack('<II', fp.read(8))
         if ncells == 0: raise KeyError
         start = (h >> 8) % ncells
         for i in range(ncells):
-            fp.seek(pos_bucket + ((start+i) % ncells)*(8))
+            fp.seek(pos_bucket + ((start+i) % ncells)*8)
             (h1, p1) = unpack('<LL', fp.read(8))
             if p1 == 0: raise KeyError
             if h1 == h:

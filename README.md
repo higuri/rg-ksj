@@ -1,13 +1,13 @@
 # rg-ksj
-Reverse Geocoding Database for Japan using KSJ (国土数値情報).
+Reverse Geocoding Database for Japan based on KSJ (国土数値情報).
 ## TODO
 - sample web page (for demo, test)
-  - unmanaged
-    - back: gcp, apache, slimphp.
-    - front: gh pages, js, OSM.
   - managed
     - back: cloud NoSQL DB with JSON support.
     - front: same as unmanaged.
+  - [OK] unmanaged
+    - back: apache, slimphp. [on GCP].
+    - front: gh pages, js, OSM. [on gh-pages].
 - argparse
 - write README
   - how to build
